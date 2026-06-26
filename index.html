@@ -392,8 +392,9 @@ tr.cancelled td{opacity:.55}
         </div>
       </div>
       <div class="frow">
-        <select id="audUser" onchange="renderAudit()" style="width:auto;font-size:11px"><option value="">Todos os usuários</option><option value="Admin">Admin</option><option value="Victor">Victor</option><option value="Stefany">Stefany</option></select>
-        <select id="audAcao" onchange="renderAudit()" style="width:auto;font-size:11px"><option value="">Todas as ações</option><option value="LOGIN">Login</option><option value="LOGOUT">Logout</option><option value="VENDA">Nova venda</option><option value="CANCELAMENTO">Cancelamento</option><option value="QUITAR">Quitar fiado</option><option value="ESTOQUE">Estoque</option><option value="FINANCEIRO">Financeiro</option><option value="PRODUTO">Produto</option><option value="EXPORTACAO">Exportação</option></select>
+        <input type="text" id="audBusca" oninput="renderAudit()" placeholder="Buscar (cliente, produto, detalhe...)" style="flex:1;min-width:160px;width:auto"/>
+        <select id="audUser" onchange="renderAudit()" style="width:auto;font-size:11px"><option value="">Todos os usuários</option><option value="Victor">Victor</option><option value="Stefany">Stefany</option></select>
+        <select id="audAcao" onchange="renderAudit()" style="width:auto;font-size:11px"><option value="">Todas as ações</option><option value="LOGIN">Login</option><option value="LOGOUT">Logout</option><option value="VENDA">Nova venda</option><option value="CANCELAMENTO">Cancelamento</option><option value="QUITAR">Quitar fiado</option><option value="AJUSTE">Ajuste estoque</option><option value="REPOSICAO">Reposição/Compra</option><option value="FINANCEIRO">Financeiro</option><option value="PRODUTO">Produto</option><option value="EXPORTACAO">Exportação</option></select>
         <input type="date" id="audDe" onchange="renderAudit()" style="width:auto"/>
         <input type="date" id="audAte" onchange="renderAudit()" style="width:auto"/>
       </div>
@@ -437,6 +438,11 @@ tr.cancelled td{opacity:.55}
           <button class="btn-s" onclick="exportPDF()"><i class="ti ti-file-text"></i> PDF</button>
         </div>
       </div>
+      <div class="card">
+        <p class="ct">Relatório Mensal (gerencial)</p>
+        <div class="fr"><div class="fg"><label>Mês</label><input type="month" id="rmMes"/></div><div class="fg"><label>&nbsp;</label><button class="btn" onclick="gerarRelMensal()"><i class="ti ti-file-analytics"></i> Gerar mensal</button></div></div>
+      </div>
+      <div id="relMensal" style="display:none"></div>
       <div id="relResult" style="display:none">
         <div class="metrics" id="relMet"></div>
         <div class="card"><p class="ct">Por produto</p><div id="relProd"></div></div>
@@ -471,8 +477,9 @@ tr.cancelled td{opacity:.55}
         <div class="ir"><span>Status</span><span id="dbStatus" style="color:var(--g)">Conectado ✓</span></div>
       </div>
       <div class="card"><p class="ct">Backup dos dados</p>
-        <p style="font-size:12px;color:var(--sub);margin-bottom:8px">Baixa uma cópia completa de tudo (produtos, vendas, clientes, financeiro, estoque, reposições) num arquivo. Guarde semanalmente.</p>
-        <button class="btn" onclick="baixarBackup()"><i class="ti ti-download"></i> Baixar backup completo</button>
+        <p style="font-size:12px;color:var(--sub);margin-bottom:8px">Baixa uma cópia completa de tudo (produtos, vendas, clientes, financeiro, estoque, reposições). Recomendado pelo menos 1x por semana.</p>
+        <div id="cfgBackupInfo" style="margin-bottom:10px"></div>
+        <button class="btn" onclick="baixarBackup()"><i class="ti ti-download"></i> Baixar backup agora</button>
       </div>
     </div>
   </div>
@@ -480,7 +487,7 @@ tr.cancelled td{opacity:.55}
 
 <!-- MODAIS -->
 <div id="cliModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'cliModal')"><div class="modal"><h3><span id="cliModalTit">Novo cliente</span></h3><input type="hidden" id="cliEditId"/><div class="fr"><div class="fg"><label>Nome completo</label><input type="text" id="cliNome"/></div><div class="fg"><label>WhatsApp</label><input type="text" id="cliTel" placeholder="(11) 99999-9999"/></div></div><div class="fg" style="margin-bottom:1rem"><label>Observação</label><input type="text" id="cliObs"/></div><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn-s" onclick="closeModal('cliModal')">Cancelar</button><button class="btn" onclick="salvarCli()">Salvar</button></div></div></div>
-<div id="entModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'entModal')"><div class="modal"><h3>Entrada de estoque</h3><div class="fr"><div class="fg"><label>Produto</label><select id="entProd" onchange="updateEntTipo()"></select></div><div class="fg"><label>Tipo</label><select id="entTipo"></select></div></div><div class="fg" style="margin-bottom:.5rem"><label>Quantidade</label><input type="number" id="entQtd" value="1" min="1"/></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:.5rem"><button class="btn-s" onclick="closeModal('entModal')">Cancelar</button><button class="btn" onclick="confEntrada()">Confirmar</button></div></div></div>
+<div id="entModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'entModal')"><div class="modal"><h3>Ajuste de estoque (sem custo)</h3><div class="fr"><div class="fg"><label>Produto</label><select id="entProd" onchange="updateEntTipo()"></select></div><div class="fg"><label>Tipo</label><select id="entTipo"></select></div></div><div class="fr"><div class="fg"><label>Operação</label><select id="entOp"><option value="add">Adicionar (+)</option><option value="rem">Remover (−)</option></select></div><div class="fg"><label>Quantidade</label><input type="number" id="entQtd" value="1" min="1"/></div></div><div class="fg" style="margin-bottom:.5rem"><label>Motivo *</label><input type="text" id="entMotivo" placeholder="Ex: correção de contagem, perda, devolução"/></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:.5rem"><button class="btn-s" onclick="closeModal('entModal')">Cancelar</button><button class="btn" onclick="confEntrada()">Confirmar ajuste</button></div></div></div>
 <div id="repModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'repModal')"><div class="modal"><h3>Reposição de estoque</h3><div class="fr"><div class="fg"><label>Produto</label><select id="repProd" onchange="updateRepTipo()"></select></div><div class="fg"><label>Tipo</label><select id="repTipo"></select></div></div><div class="fr"><div class="fg"><label>Quantidade</label><input type="number" id="repQtd" value="1" min="1" oninput="calcRep()"/></div><div class="fg"><label>Custo unit. (R$)</label><input type="number" id="repCustUnit" step="0.01" placeholder="0,00" oninput="calcRep()"/></div></div><div class="fr"><div class="fg"><label>Custo total</label><input type="text" id="repCustTot" readonly/></div><div class="fg"><label>Data</label><input type="date" id="repData"/></div></div><div class="fr"><div class="fg"><label>Fornecedor</label><input type="text" id="repForn"/></div><div class="fg"><label>Observação</label><input type="text" id="repObs"/></div></div><p style="font-size:11px;color:var(--sub);margin-bottom:.75rem">O custo informado aqui atualiza automaticamente o custo atual do produto.</p><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn-s" onclick="closeModal('repModal')">Cancelar</button><button class="btn" onclick="confReposicao()">Confirmar</button></div></div></div>
 <div id="prodModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'prodModal')"><div class="modal"><h3><span id="prodModalTit">Novo produto</span></h3><input type="hidden" id="prodEditId"/><div class="fg" style="margin-bottom:10px"><label>Nome do produto *</label><input type="text" id="prodNome" placeholder="Ex: Retatrutide Verde"/></div><div class="fr"><div class="fg"><label>Como é vendido</label><select id="prodVende" onchange="updateProdForm()"><option value="caixa">Só em caixa</option><option value="ambos">Caixa e frasco (fracionado)</option></select></div><div class="fg" id="prodFpcWrap" style="display:none"><label>Frascos por caixa</label><input type="number" id="prodFpc" value="4" min="1" oninput="updateProdForm()"/></div></div><div class="fr"><div class="fg"><label>Custo da caixa (R$) *</label><input type="number" id="prodCustoCaixa" step="0.01" placeholder="0,00" oninput="updateProdForm()"/></div><div class="fg" id="prodCustoFrascoWrap" style="display:none"><label>Custo do frasco (R$)</label><input type="number" id="prodCustoFrasco" step="0.01" readonly/></div></div><div class="fr"><div class="fg"><label>Preço padrão de venda (R$)</label><input type="number" id="prodPreco" step="0.01" placeholder="0,00"/></div><div class="fg"><label>Estoque mínimo (caixas)</label><input type="number" id="prodMin" value="4" min="0"/></div></div><div class="fr"><div class="fg"><label>Estoque crítico (caixas)</label><input type="number" id="prodCrit" value="2" min="0"/></div><div class="fg"></div></div><p style="font-size:11px;color:var(--sub);margin-bottom:1rem">O custo do frasco é calculado automaticamente. O preço padrão já vem preenchido na venda (você pode mudar). Os limites definem o status do estoque (Bom/Baixo/Crítico).</p><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn-s" onclick="closeModal('prodModal')">Cancelar</button><button class="btn" onclick="salvarProduto()">Salvar</button></div></div></div>
 <div id="cliDetModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'cliDetModal')"><div class="modal" style="max-width:520px"><h3 id="cliDetNome"></h3><div id="cliDetBody"></div><div style="display:flex;justify-content:flex-end;margin-top:1rem"><button class="btn-s" onclick="closeModal('cliDetModal')">Fechar</button></div></div></div>
@@ -525,7 +532,8 @@ let authToken='';
 let META_LUCRO_MES=6000,META_BRUTO_MES=12000,META_LUCRO_SEM=1500,META_BRUTO_SEM=3000;
 const RECOMPRA_DIAS={frasco:30,caixa:90}; // dias estimados de duração para alertar recompra
 let sessionTimer,loggedIn=false,currentUser='',finTabAtual='all';
-let DB={produtos:[],vendas:[],clientes:[],saidas:[],reposicoes:[],auditLog:[]};
+let DB={produtos:[],vendas:[],clientes:[],saidas:[],reposicoes:[],auditLog:[],config:{}};
+function brDateTimeToDate(s){if(!s)return null;const m=String(s).match(/(\d{2})\/(\d{2})\/(\d{4})/);if(!m)return null;return new Date(+m[3],+m[2]-1,+m[1]);}
 const _charts={};
 
 // ============================================================
@@ -593,7 +601,7 @@ async function loadAll(){
     DB.saidas=Array.isArray(saidas)?saidas.map(mapSaida):[];
     DB.reposicoes=Array.isArray(reps)?reps.map(mapRep):[];
     DB.auditLog=Array.isArray(logs)?logs:[];
-    try{const cfg=await sbGet('config','id=eq.1');if(Array.isArray(cfg)&&cfg[0]){const c=cfg[0];if(c.meta_lucro_mes!=null)META_LUCRO_MES=+c.meta_lucro_mes;if(c.meta_bruto_mes!=null)META_BRUTO_MES=+c.meta_bruto_mes;if(c.meta_lucro_sem!=null)META_LUCRO_SEM=+c.meta_lucro_sem;if(c.meta_bruto_sem!=null)META_BRUTO_SEM=+c.meta_bruto_sem;}}catch(e){}
+    try{const cfg=await sbGet('config','id=eq.1');if(Array.isArray(cfg)&&cfg[0]){const c=cfg[0];DB.config=c;if(c.meta_lucro_mes!=null)META_LUCRO_MES=+c.meta_lucro_mes;if(c.meta_bruto_mes!=null)META_BRUTO_MES=+c.meta_bruto_mes;if(c.meta_lucro_sem!=null)META_LUCRO_SEM=+c.meta_lucro_sem;if(c.meta_bruto_sem!=null)META_BRUTO_SEM=+c.meta_bruto_sem;}}catch(e){}
   }catch(e){showToast('Erro ao carregar dados. Verifique a conexão.','err');}
   hideLoading();
 }
@@ -663,7 +671,9 @@ function gp(id,btn){
   if(id==='graficos')renderGraficos();if(id==='cancelamentos')renderCancelamentos();if(id==='auditoria')renderAudit();
   if(id==='produtos')renderProdutos();if(id==='recontato')renderRecontato();if(id==='config')populateConfig();
 }
-function populateConfig(){const s=(id,v)=>{const e=document.getElementById(id);if(e)e.value=v;};s('cfgLucroMes',META_LUCRO_MES);s('cfgBrutoMes',META_BRUTO_MES);s('cfgLucroSem',META_LUCRO_SEM);s('cfgBrutoSem',META_BRUTO_SEM);}
+function populateConfig(){const s=(id,v)=>{const e=document.getElementById(id);if(e)e.value=v;};s('cfgLucroMes',META_LUCRO_MES);s('cfgBrutoMes',META_BRUTO_MES);s('cfgLucroSem',META_LUCRO_SEM);s('cfgBrutoSem',META_BRUTO_SEM);
+  const lb=DB.config&&DB.config.last_backup?DB.config.last_backup:null,dias=lb?Math.floor((new Date()-brDateTimeToDate(lb))/864e5):null,el=document.getElementById('cfgBackupInfo');
+  if(el)el.innerHTML=lb?`<div class="ir"><span>Último backup</span><span>${lb}</span></div><div class="ir"><span>Status</span><span class="${dias>=7?'mp-red':'mp-green'}">${dias>=7?'Atrasado ('+dias+' dias)':'Em dia'}</span></div>`:`<div class="ir"><span>Status</span><span class="mp-amber">Nenhum backup registrado ainda</span></div>`;}
 async function salvarMetas(){
   const lm=parseFloat(document.getElementById('cfgLucroMes').value)||0,bm=parseFloat(document.getElementById('cfgBrutoMes').value)||0,ls=parseFloat(document.getElementById('cfgLucroSem').value)||0,bs=parseFloat(document.getElementById('cfgBrutoSem').value)||0;
   showLoading('Salvando metas...');
@@ -725,6 +735,8 @@ async function regVenda(){
     populateCliSelect();hideLoading();
   }else{const c=DB.clientes.find(x=>x.id==ci);if(c){cn=c.nome;cw=c.tel;}}
   if(!q||!vo||!dt){showToast('Preencha todos os campos obrigatórios.','err');return;}
+  const cuUnit=t==='caixa'?p.custoCaixa:p.custoFrasco;
+  if(!cuUnit||cuUnit<=0){showToast('Cadastre o custo de '+p.nome+' antes de vender (Produtos → Editar).','err');return;}
   // estoque
   if(t==='caixa'){if(p.caixas<q){showToast('Estoque insuficiente.','err');return;}p.caixas-=q;}
   else{const tf=totFP(p);if(tf<q){showToast('Estoque insuficiente.','err');return;}let r=q;if(p.frascos>=r)p.frascos-=r;else{r-=p.frascos;p.frascos=0;const cx=Math.ceil(r/fpcOf(p));p.caixas-=cx;p.frascos=cx*fpcOf(p)-r;}}
@@ -758,6 +770,7 @@ function abrirCancelamento(id){
 async function confirmarCancelamento(){
   const id=parseInt(document.getElementById('cancelVendaId').value),motivo=document.getElementById('cancelMotivo').value,obs=document.getElementById('cancelObs').value.trim();
   if(!motivo){showToast('Selecione o motivo.','err');return;}
+  if(!confirm('Confirmar o cancelamento desta venda? O estoque será restaurado e a ação ficará registrada na auditoria.'))return;
   const v=DB.vendas.find(x=>x.id===id);if(!v)return;
   const motivoFinal=motivo+(obs?' — '+obs:'');const{display}=getNow();
   showLoading('Cancelando venda...');
@@ -787,15 +800,17 @@ function renderAudit(){
   let logs=[...DB.auditLog];
   if(fu)logs=logs.filter(l=>l.usuario===fu);if(fa)logs=logs.filter(l=>l.acao&&l.acao.startsWith(fa));
   if(de)logs=logs.filter(l=>l.ts&&l.ts.split('T')[0]>=de);if(ate)logs=logs.filter(l=>l.ts&&l.ts.split('T')[0]<=ate);
-  const acaoLabel={LOGIN:'Login',LOGOUT:'Logout',SESSAO_EXPIRADA:'Sessão expirada',VENDA:'Nova venda',CANCELAMENTO:'Cancelamento',QUITAR:'Quitar fiado',ESTOQUE:'Estoque',REPOSICAO:'Reposição',FINANCEIRO:'Financeiro',FINANCEIRO_EXCLUIDO:'Fin. excluído',PRODUTO:'Produto',PRODUTO_EDITADO:'Produto editado',EXPORTACAO:'Exportação',CLIENTE_CADASTRADO:'Cliente novo',CLIENTE_EDITADO:'Cliente editado',CLIENTE_REMOVIDO:'Cliente removido'};
-  const acaoBadge={LOGIN:'blog-login',LOGOUT:'blog-logout',SESSAO_EXPIRADA:'blog-logout',VENDA:'blog-venda',CANCELAMENTO:'blog-cancel',QUITAR:'blog-quitar',ESTOQUE:'blog-estoque',REPOSICAO:'blog-estoque',FINANCEIRO:'blog-fin',FINANCEIRO_EXCLUIDO:'blog-fin',PRODUTO:'blog-estoque',PRODUTO_EDITADO:'blog-estoque',EXPORTACAO:'blog-export',CLIENTE_CADASTRADO:'blog-venda',CLIENTE_EDITADO:'blog-venda',CLIENTE_REMOVIDO:'blog-cancel'};
+  const bq=(document.getElementById('audBusca')||{}).value,bql=bq?bq.toLowerCase():'';
+  if(bql)logs=logs.filter(l=>((l.detalhes||'')+' '+(l.usuario||'')+' '+(l.acao||'')).toLowerCase().includes(bql));
+  const acaoLabel={LOGIN:'Login',LOGOUT:'Logout',SESSAO_EXPIRADA:'Sessão expirada',VENDA:'Nova venda',CANCELAMENTO:'Cancelamento',QUITAR:'Quitar fiado',ESTOQUE:'Estoque',AJUSTE:'Ajuste estoque',REPOSICAO:'Reposição/Compra',FINANCEIRO:'Financeiro',FINANCEIRO_EXCLUIDO:'Fin. excluído',PRODUTO:'Produto',PRODUTO_EDITADO:'Produto editado',EXPORTACAO:'Exportação',CLIENTE_CADASTRADO:'Cliente novo',CLIENTE_EDITADO:'Cliente editado',CLIENTE_REMOVIDO:'Cliente removido'};
+  const acaoBadge={LOGIN:'blog-login',LOGOUT:'blog-logout',SESSAO_EXPIRADA:'blog-logout',VENDA:'blog-venda',CANCELAMENTO:'blog-cancel',QUITAR:'blog-quitar',ESTOQUE:'blog-estoque',AJUSTE:'blog-estoque',REPOSICAO:'blog-estoque',FINANCEIRO:'blog-fin',FINANCEIRO_EXCLUIDO:'blog-fin',PRODUTO:'blog-estoque',PRODUTO_EDITADO:'blog-estoque',EXPORTACAO:'blog-export',CLIENTE_CADASTRADO:'blog-venda',CLIENTE_EDITADO:'blog-venda',CLIENTE_REMOVIDO:'blog-cancel'};
   const uniq=new Set(DB.auditLog.map(l=>l.usuario));
   document.getElementById('audMet').innerHTML=`<div class="met"><div class="met-l">Total eventos</div><div class="met-v">${DB.auditLog.length}</div></div><div class="met"><div class="met-l">Usuários ativos</div><div class="met-v">${uniq.size}</div></div><div class="met"><div class="met-l">Cancelamentos</div><div class="met-v" style="color:var(--r)">${DB.auditLog.filter(l=>l.acao==='CANCELAMENTO').length}</div></div><div class="met"><div class="met-l">Exibindo</div><div class="met-v">${logs.length}</div></div>`;
   const body=document.getElementById('audBody'),empty=document.getElementById('audEmpty');
   if(!logs.length){body.innerHTML='';empty.style.display='';return;}empty.style.display='none';
   body.innerHTML=logs.map(l=>`<tr><td style="white-space:nowrap;font-size:11px">${l.display||''}</td><td><span class="badge bc">${l.usuario||''}</span></td><td><span class="badge ${acaoBadge[l.acao]||'bdin'}">${acaoLabel[l.acao]||l.acao||''}</span></td><td style="font-size:11px;color:var(--sub)">${l.dispositivo||''}</td><td style="font-size:11px;color:var(--sub);max-width:240px">${l.detalhes||''}</td></tr>`).join('');
 }
-function clearAuditFilter(){['audUser','audAcao'].forEach(id=>document.getElementById(id).value='');['audDe','audAte'].forEach(id=>document.getElementById(id).value='');renderAudit();}
+function clearAuditFilter(){['audUser','audAcao','audBusca'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});['audDe','audAte'].forEach(id=>document.getElementById(id).value='');renderAudit();}
 
 // ============================================================
 // EXPORTAÇÃO GENÉRICA (CSV — separador ; para Excel BR)
@@ -811,7 +826,7 @@ function exportAuditCSV(){dlCSV('vs_auditoria.csv',['Data/Hora','Usuário','Aç�
 function exportClientes(){dlCSV('vs_clientes.csv',['Nome','WhatsApp','Compras','Lucro gerado','Obs'],DB.clientes.map(c=>{const vs=DB.vendas.filter(v=>v.cliId==c.id&&!v.cancelada),l=vs.reduce((a,v)=>a+v.lucroLiq,0);return[c.nome,c.tel,vs.length,l.toFixed(2),c.obs||''];}));}
 function exportEstoque(){dlCSV('vs_estoque.csv',['Produto','Caixas','Frascos','Total frascos eq.','Custo caixa','Custo frasco','Valor em estoque'],DB.produtos.map(p=>[p.nome,p.caixas,p.frascos,totFP(p),p.custoCaixa.toFixed(2),p.custoFrasco.toFixed(2),valorEstProd(p).toFixed(2)]));}
 function exportProdutos(){dlCSV('vs_produtos.csv',['Produto','Vende frasco','Frascos por caixa','Custo caixa','Custo frasco','Caixas','Frascos','Ativo'],DB.produtos.map(p=>[p.nome,p.vendeFrasco?'Sim':'Não',p.fpc,p.custoCaixa.toFixed(2),p.custoFrasco.toFixed(2),p.caixas,p.frascos,p.ativo?'Sim':'Não']));}
-function baixarBackup(){const dump={app:'VS Performance',exportado_em:getNow().display,por:currentUser,produtos:DB.produtos,vendas:DB.vendas,clientes:DB.clientes,saidas:DB.saidas,reposicoes:DB.reposicoes};const blob=new Blob([JSON.stringify(dump,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='vs_backup_'+today()+'.json';a.click();audit('EXPORTACAO','Backup completo (JSON) baixado por '+currentUser);showToast('Backup baixado!');}
+async function baixarBackup(){const dump={app:'VS Performance',exportado_em:getNow().display,por:currentUser,produtos:DB.produtos,vendas:DB.vendas,clientes:DB.clientes,saidas:DB.saidas,reposicoes:DB.reposicoes};const blob=new Blob([JSON.stringify(dump,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='vs_backup_'+today()+'.json';a.click();const{display}=getNow();try{await sbPatch('config',1,{last_backup:display});DB.config.last_backup=display;}catch(e){}await audit('EXPORTACAO','Backup completo (JSON) baixado por '+currentUser);renderAlertas();showToast('Backup baixado!');}
 function exportFin(){const tm={prolabore:'Pró-labore',retirada:'Retirada',fornecedor:'Fornecedor',despesa:'Despesa',imposto:'Imposto',outros:'Outros'};dlCSV('vs_financeiro.csv',['Data','Tipo','Sócio/Resp.','Descrição','Pgto','Valor'],DB.saidas.map(s=>[fmtD(s.data),tm[s.tipo]||s.tipo,s.socio||'—',s.desc,s.pgto,s.val.toFixed(2)]));}
 function exportFiado(){const fi=DB.vendas.filter(v=>v.pgto==='fiado'&&!v.quitado&&!v.cancelada);dlCSV('vs_fiado.csv',['Cliente','WhatsApp','Produto','Tipo','Qtd','Valor','Data'],fi.map(v=>[v.cliente,v.wpp,prodNome(v.prod),tipoLabel(v.tipo),v.qtd,v.bruto.toFixed(2),fmtD(v.data)]));}
 function exportCancel(){const cans=DB.vendas.filter(v=>v.cancelada);dlCSV('vs_cancelamentos.csv',['Data cancelamento','Cancelado por','Data venda','Produto','Tipo','Qtd','Cliente','WhatsApp','Valor','Motivo'],cans.map(v=>[v.canceladaEm||'',v.canceladaPor||'',fmtD(v.data),prodNome(v.prod),tipoLabel(v.tipo),v.qtd,v.cliente,v.wpp,v.bruto.toFixed(2),v.canceladaMotivo||'']));}
@@ -862,16 +877,25 @@ async function delSaida(id){
 // ALERTAS
 // ============================================================
 function renderAlertas(){
-  let h='';
+  const itens=[];
   DB.produtos.filter(p=>p.ativo).forEach(p=>{
     const st=estStatus(p);
-    if(st.label==='Sem estoque')h+=`<div class="alert-banner a1"><i class="ti ti-alert-circle" style="font-size:16px;flex-shrink:0"></i><strong>🚨 ${p.nome}: SEM ESTOQUE</strong>&nbsp;— repor urgente!</div>`;
-    else if(st.label==='Crítico')h+=`<div class="alert-banner a1"><i class="ti ti-alert-circle" style="font-size:16px;flex-shrink:0"></i><strong>🚨 Crítico — ${p.nome}:</strong>&nbsp;${p.caixas} caixa(s). Repor já.</div>`;
-    else if(st.label==='Baixo')h+=`<div class="alert-banner a2"><i class="ti ti-alert-triangle" style="font-size:16px;flex-shrink:0"></i><strong>⚠ Baixo — ${p.nome}:</strong>&nbsp;${p.caixas} caixa(s).</div>`;
+    if(st.label==='Sem estoque')itens.push({n:'crit',t:`<strong>🚨 ${p.nome}: SEM ESTOQUE</strong> — repor urgente!`});
+    else if(st.label==='Crítico')itens.push({n:'crit',t:`<strong>🚨 Estoque crítico — ${p.nome}:</strong> ${p.caixas} caixa(s).`});
+    else if(st.label==='Baixo')itens.push({n:'warn',t:`<strong>⚠ Estoque baixo — ${p.nome}:</strong> ${p.caixas} caixa(s) (mínimo ${p.estMin}).`});
+    if(!p.custoCaixa||p.custoCaixa<=0)itens.push({n:'warn',t:`<strong>⚠ ${p.nome}: sem custo cadastrado</strong> — lucro/margem ficam errados. Cadastre em Produtos.`});
   });
-  const fi=DB.vendas.filter(v=>v.pgto==='fiado'&&!v.quitado&&!v.cancelada);
-  fi.forEach(v=>{const wn=v.wpp.replace(/\D/g,''),msg=encodeURIComponent(`Olá, tudo bem? Passando para lembrar do valor em aberto referente à compra de ${prodNome(v.prod)}, no valor de ${R(v.bruto)}. Pode me confirmar, por favor, a melhor forma para regularizarmos?`);h+=`<div class="alert-banner afiad"><i class="ti ti-clock-dollar" style="font-size:16px;flex-shrink:0"></i><span><strong>💸 Fiado:</strong> ${v.cliente} deve <strong>${R(v.bruto)}</strong> desde ${fmtD(v.data)}</span><a href="https://wa.me/55${wn}?text=${msg}" target="_blank" class="btn-wpp" style="margin-left:auto;flex-shrink:0"><i class="ti ti-brand-whatsapp"></i> Cobrar</a></div>`;});
-  document.getElementById('alertas').innerHTML=h;
+  DB.vendas.filter(v=>v.pgto==='fiado'&&!v.quitado&&!v.cancelada&&diasDesde(v.data)>=15).forEach(v=>{const wn=v.wpp.replace(/\D/g,''),msg=encodeURIComponent(`Olá, tudo bem? Passando para lembrar do valor em aberto referente à compra de ${prodNome(v.prod)}, no valor de ${R(v.bruto)}. Pode me confirmar, por favor, a melhor forma para regularizarmos?`);itens.push({n:'crit',t:`<span><strong>💸 Fiado vencido:</strong> ${v.cliente} deve <strong>${R(v.bruto)}</strong> há ${diasDesde(v.data)} dias</span>`,extra:`<a href="https://wa.me/55${wn}?text=${msg}" target="_blank" class="btn-wpp" style="margin-left:auto;flex-shrink:0"><i class="ti ti-brand-whatsapp"></i> Cobrar</a>`});});
+  const recCancel=DB.vendas.filter(v=>v.cancelada&&brDateTimeToDate(v.canceladaEm)&&(new Date()-brDateTimeToDate(v.canceladaEm))/864e5<=7);
+  if(recCancel.length)itens.push({n:'warn',t:`<strong>⚠ ${recCancel.length} venda(s) cancelada(s)</strong> nos últimos 7 dias (ver Cancelamentos).`});
+  const lb=DB.config&&DB.config.last_backup?brDateTimeToDate(DB.config.last_backup):null,diasBk=lb?Math.floor((new Date()-lb)/864e5):null;
+  if(diasBk===null)itens.push({n:'warn',t:`<strong>⚠ Nenhum backup registrado.</strong> Baixe uma cópia em Config → Backup.`});
+  else if(diasBk>=7)itens.push({n:'crit',t:`<strong>🚨 Backup atrasado (${diasBk} dias).</strong> Recomendado baixar uma cópia de segurança em Config → Backup.`});
+  const sens=DB.auditLog.filter(l=>['CANCELAMENTO','ESTOQUE','AJUSTE','PRODUTO_EDITADO','FINANCEIRO_EXCLUIDO'].includes(l.acao)&&l.ts&&(new Date()-new Date(l.ts))/36e5<=24);
+  if(sens.length)itens.push({n:'warn',t:`<strong>⚠ ${sens.length} alteração(ões) sensível(is)</strong> nas últimas 24h (ver Auditoria).`});
+  const crit=itens.filter(i=>i.n==='crit').length,warn=itens.filter(i=>i.n==='warn').length;
+  const body=itens.length?itens.map(i=>`<div class="alert-banner ${i.n==='crit'?'a1':'a2'}">${i.t}${i.extra||''}</div>`).join(''):`<div class="alert-banner" style="background:#E1F5EE;color:#0F6E56;border:1px solid #9FE1CB"><i class="ti ti-circle-check" style="font-size:16px"></i> Tudo certo — nenhum alerta no momento.</div>`;
+  document.getElementById('alertas').innerHTML=`<div class="card" style="margin-bottom:.875rem"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem"><p class="ct" style="margin:0"><i class="ti ti-bell"></i> Alertas Críticos</p><span class="${crit?'mp-red':warn?'mp-amber':'mp-green'}">${crit} crítico(s) · ${warn} atenção</span></div>${body}</div>`;
 }
 
 // ============================================================
@@ -948,9 +972,10 @@ function renderEst(){
   else{
     wrap.innerHTML=DB.produtos.filter(p=>p.ativo).map(p=>{
       const f=totFP(p),ct=valorEstProd(p),st=estStatus(p),cls=st.sb,pct=Math.min(100,Math.round((p.caixas||0)/Math.max(1,(p.estMin||4)*2)*100));
+      const ultEnt=DB.reposicoes.filter(r=>r.prod===p.id).map(r=>r.data).sort().pop(),ultSai=DB.vendas.filter(x=>x.prod===p.id&&!x.cancelada).map(x=>x.data).sort().pop();
       const frascoCol=p.vendeFrasco?`<div style="background:var(--secondary-bg);border-radius:8px;padding:.875rem;text-align:center"><p style="font-size:11px;color:var(--sub)">Frascos avulsos</p><p style="font-size:28px;font-weight:500">${p.frascos}</p><p style="font-size:11px;color:var(--sub)">${R(p.frascos*p.custoFrasco)}</p></div><div style="background:var(--secondary-bg);border-radius:8px;padding:.875rem;text-align:center"><p style="font-size:11px;color:var(--sub)">Total frascos</p><p style="font-size:28px;font-weight:500">${f}</p></div>`:'';
       const cols=p.vendeFrasco?4:2;
-      return `<div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.875rem"><div><p style="font-size:16px;font-weight:500">${p.nome}</p><p style="font-size:12px;color:var(--sub)">${p.vendeFrasco?'1 caixa = '+p.fpc+' frascos · ':''}${R(p.custoCaixa)}/caixa${p.vendeFrasco?' · '+R(p.custoFrasco)+'/frasco':''}</p></div><span class="badge ${st.cls}">${st.label} · ${p.caixas} cx</span></div><div style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:.875rem;margin-bottom:.875rem"><div style="background:var(--secondary-bg);border-radius:8px;padding:.875rem;text-align:center"><p style="font-size:11px;color:var(--sub)">Caixas</p><p style="font-size:28px;font-weight:500">${p.caixas}</p><p style="font-size:11px;color:var(--sub)">${R(p.caixas*p.custoCaixa)}</p></div>${frascoCol}<div style="background:var(--secondary-bg);border-radius:8px;padding:.875rem;text-align:center"><p style="font-size:11px;color:var(--sub)">💰 Valor</p><p style="font-size:20px;font-weight:500;color:var(--g)">${R(ct)}</p></div></div><div class="sbr"><div class="sb ${cls}" style="width:${pct}%"></div></div></div>`;
+      return `<div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.875rem"><div><p style="font-size:16px;font-weight:500">${p.nome}</p><p style="font-size:12px;color:var(--sub)">${p.vendeFrasco?'1 caixa = '+p.fpc+' frascos · ':''}${R(p.custoCaixa)}/caixa${p.vendeFrasco?' · '+R(p.custoFrasco)+'/frasco':''}</p></div><span class="badge ${st.cls}">${st.label} · ${p.caixas} cx</span></div><div style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:.875rem;margin-bottom:.875rem"><div style="background:var(--secondary-bg);border-radius:8px;padding:.875rem;text-align:center"><p style="font-size:11px;color:var(--sub)">Caixas</p><p style="font-size:28px;font-weight:500">${p.caixas}</p><p style="font-size:11px;color:var(--sub)">${R(p.caixas*p.custoCaixa)}</p></div>${frascoCol}<div style="background:var(--secondary-bg);border-radius:8px;padding:.875rem;text-align:center"><p style="font-size:11px;color:var(--sub)">💰 Valor</p><p style="font-size:20px;font-weight:500;color:var(--g)">${R(ct)}</p></div></div><div class="sbr"><div class="sb ${cls}" style="width:${pct}%"></div></div><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap"><p style="font-size:11px;color:var(--sub);margin:0">Última entrada: ${ultEnt?fmtD(ultEnt):'—'} · Última saída: ${ultSai?fmtD(ultSai):'—'}</p><button class="btn-s" style="font-size:11px;padding:5px 10px" onclick="showRepModalFor('${p.id}')"><i class="ti ti-package"></i> Nova compra</button></div></div>`;
     }).join('');
   }
   const rl=document.getElementById('repList');
@@ -958,19 +983,22 @@ function renderEst(){
   rl.innerHTML=`<div class="tw"><table><thead><tr><th>Data</th><th>Produto</th><th>Tipo</th><th>Qtd</th><th>Custo unit.</th><th>Total</th><th>Fornecedor</th><th>Obs</th></tr></thead><tbody>${[...DB.reposicoes].reverse().map(r=>`<tr><td>${fmtD(r.data)}</td><td>${prodNome(r.prod)}</td><td>${tipoLabel(r.tipo)}</td><td>${r.qtd}</td><td>${R(r.custUnit)}</td><td style="font-weight:500">${R(r.custTotal)}</td><td>${r.forn||'—'}</td><td style="font-size:11px;color:var(--sub)">${r.obs||'—'}</td></tr>`).join('')}</tbody></table></div>`;
 }
 function updateEntTipo(){const p=getProd(document.getElementById('entProd').value);document.getElementById('entTipo').innerHTML=tipoOptions(p);}
-function showEntModal(){if(!DB.produtos.length){showToast('Cadastre um produto primeiro.','err');return;}populateProdSelects();updateEntTipo();document.getElementById('entModal').style.display='flex';}
+function showEntModal(){if(!DB.produtos.length){showToast('Cadastre um produto primeiro.','err');return;}populateProdSelects();updateEntTipo();document.getElementById('entMotivo').value='';document.getElementById('entOp').value='add';document.getElementById('entQtd').value='1';document.getElementById('entModal').style.display='flex';}
 async function confEntrada(){
-  const p=getProd(document.getElementById('entProd').value),t=document.getElementById('entTipo').value,q=parseInt(document.getElementById('entQtd').value)||0;
+  const p=getProd(document.getElementById('entProd').value),t=document.getElementById('entTipo').value,q=parseInt(document.getElementById('entQtd').value)||0,op=document.getElementById('entOp').value,motivo=document.getElementById('entMotivo').value.trim();
   if(!p){showToast('Selecione o produto.','err');return;}
   if(!q){showToast('Informe a quantidade.','err');return;}
-  showLoading('Salvando estoque...');
-  if(t==='caixa')p.caixas+=q;else p.frascos+=q;
-  try{await sbPatch('produtos',p.id,{caixas:p.caixas,frascos:p.frascos});await audit('ESTOQUE',`Entrada: ${q} ${t==='caixa'?'caixa(s)':'frasco(s)'} de ${p.nome} por ${currentUser}`);}
+  if(!motivo){showToast('Informe o motivo do ajuste.','err');return;}
+  const antesC=p.caixas,antesF=p.frascos,delta=op==='rem'?-q:q;
+  if(t==='caixa'){if(p.caixas+delta<0){showToast('Estoque não pode ficar negativo.','err');return;}p.caixas+=delta;}else{if(p.frascos+delta<0){showToast('Estoque não pode ficar negativo.','err');return;}p.frascos+=delta;}
+  showLoading('Salvando ajuste...');
+  try{await sbPatch('produtos',p.id,{caixas:p.caixas,frascos:p.frascos});await audit('AJUSTE',`${p.nome} ${t} ${op==='rem'?'−':'+'}${q} · ${antesC}cx/${antesF}fr → ${p.caixas}cx/${p.frascos}fr · Motivo: ${motivo}`);}
   catch(e){hideLoading();showToast('Erro ao salvar.','err');return;}
-  hideLoading();closeModal('entModal');renderAll();showToast('Entrada registrada!');
+  hideLoading();closeModal('entModal');document.getElementById('entMotivo').value='';renderAll();showToast('Ajuste registrado!');
 }
 function updateRepTipo(){const p=getProd(document.getElementById('repProd').value);document.getElementById('repTipo').innerHTML=tipoOptions(p);}
 function showRepModal(){if(!DB.produtos.length){showToast('Cadastre um produto primeiro.','err');return;}populateProdSelects();updateRepTipo();document.getElementById('repData').value=today();document.getElementById('repModal').style.display='flex';}
+function showRepModalFor(id){showRepModal();const s=document.getElementById('repProd');if(s){s.value=id;updateRepTipo();}}
 function calcRep(){const q=parseInt(document.getElementById('repQtd').value)||0,cu=parseFloat(document.getElementById('repCustUnit').value)||0;document.getElementById('repCustTot').value=q&&cu?R(q*cu):'';}
 async function confReposicao(){
   const p=getProd(document.getElementById('repProd').value),t=document.getElementById('repTipo').value,q=parseInt(document.getElementById('repQtd').value)||0,cu=parseFloat(document.getElementById('repCustUnit').value)||0,forn=document.getElementById('repForn').value.trim(),data=document.getElementById('repData').value,obs=document.getElementById('repObs').value.trim();
@@ -1024,10 +1052,10 @@ async function salvarProduto(){
   showLoading('Salvando produto...');
   try{
     if(eid){
-      const p=getProd(eid);
+      const p=getProd(eid);const antesTxt=p?`custo cx ${R(p.custoCaixa)}→${R(cc)}, frasco ${R(p.custoFrasco)}→${R(cf)}`:'';
       await sbPatch('produtos',eid,{nome,vende_frasco:frac,frascos_por_caixa:fpc,custo_caixa:cc,custo_frasco:cf,preco_padrao:pp,estoque_minimo:mn,estoque_critico:ct});
       if(p){p.nome=nome;p.vendeFrasco=frac;p.fpc=fpc;p.custoCaixa=cc;p.custoFrasco=cf;p.precoPadrao=pp;p.estMin=mn;p.estCrit=ct;}
-      await audit('PRODUTO_EDITADO',`${nome} editado por ${currentUser}`);
+      await audit('PRODUTO_EDITADO',`${nome}: ${antesTxt} · por ${currentUser}`);
     }else{
       let id=slugify(nome);if(getProd(id))id=id+'_'+Date.now();
       const row={id,nome,vende_frasco:frac,frascos_por_caixa:fpc,custo_caixa:cc,custo_frasco:cf,preco_padrao:pp,estoque_minimo:mn,estoque_critico:ct,caixas:0,frascos:0,ativo:true};
@@ -1248,6 +1276,24 @@ function exportPDF(){
   const w=window.open('','_blank');w.document.write(html);w.document.close();w.focus();setTimeout(()=>w.print(),400);
   audit('EXPORTACAO','PDF exportado');showToast('PDF aberto!');
 }
+function gerarRelMensal(){
+  const mes=document.getElementById('rmMes').value||today().slice(0,7);
+  const vM=DB.vendas.filter(v=>v.data&&v.data.startsWith(mes)&&!v.cancelada);
+  const canM=DB.vendas.filter(v=>v.cancelada&&v.canceladaEm&&brDateTimeToDate(v.canceladaEm)&&brDateTimeToDate(v.canceladaEm).toISOString().slice(0,7)===mes);
+  const sM=DB.saidas.filter(s=>s.data&&s.data.startsWith(mes));
+  const bruto=vM.reduce((a,v)=>a+v.bruto,0),custo=vM.reduce((a,v)=>a+v.custo,0),lucro=vM.reduce((a,v)=>a+v.lucroLiq,0),margem=margemPct(bruto,lucro);
+  const fiadoAberto=DB.vendas.filter(v=>v.pgto==='fiado'&&!v.quitado&&!v.cancelada).reduce((a,v)=>a+v.bruto,0);
+  const fiadoReceb=DB.vendas.filter(v=>v.quitado&&v.quitadoEm&&brDateTimeToDate(v.quitadoEm)&&brDateTimeToDate(v.quitadoEm).toISOString().slice(0,7)===mes).reduce((a,v)=>a+v.bruto,0);
+  const saidas=sM.reduce((a,s)=>a+s.val,0);
+  const porP={};vM.forEach(v=>{if(!porP[v.prod])porP[v.prod]={q:0,l:0};porP[v.prod].q+=v.qtd;porP[v.prod].l+=v.lucroLiq;});
+  let maisVend='—',maisLuc='—',mq=-1,ml=-1;Object.keys(porP).forEach(k=>{if(porP[k].q>mq){mq=porP[k].q;maisVend=prodNome(k)+' ('+porP[k].q+' un.)';}if(porP[k].l>ml){ml=porP[k].l;maisLuc=prodNome(k)+' ('+R(porP[k].l)+')';}});
+  const estFinal=DB.produtos.filter(p=>p.ativo).map(p=>`${p.nome}: ${p.caixas} cx${p.vendeFrasco?' + '+p.frascos+' fr':''} (${R(valorEstProd(p))})`).join(' · ');
+  const mesLabel=mes.split('-').reverse().join('/');
+  const el=document.getElementById('relMensal');el.style.display='block';
+  el.innerHTML=`<div class="card" id="relMensalPrint"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem"><p class="ct" style="margin:0">Relatório Mensal — ${mesLabel}</p><button class="btn-s" onclick="imprimirMensal()"><i class="ti ti-printer"></i> Imprimir / PDF</button></div><div class="ir"><span>Faturamento bruto</span><span>${R(bruto)}</span></div><div class="ir"><span>Custo total dos produtos</span><span style="color:var(--r)">${R(custo)}</span></div><div class="ir"><span>Lucro líquido</span><span style="color:var(--g)">${R(lucro)}</span></div><div class="ir"><span>Margem média</span><span>${margem.toFixed(1)}%</span></div><div class="ir"><span>Total de vendas</span><span>${vM.length}</span></div><div class="ir"><span>Cancelamentos</span><span>${canM.length}</span></div><div class="ir"><span>Fiado em aberto (atual)</span><span style="color:var(--am)">${R(fiadoAberto)}</span></div><div class="ir"><span>Fiado recebido no mês</span><span style="color:var(--g)">${R(fiadoReceb)}</span></div><div class="ir"><span>Saídas financeiras</span><span style="color:var(--r)">${R(saidas)}</span></div><div class="ir"><span>Produto mais vendido</span><span>${maisVend}</span></div><div class="ir"><span>Produto mais lucrativo</span><span>${maisLuc}</span></div><div class="ir" style="border:none"><span>Estoque final</span><span style="text-align:right;max-width:60%">${estFinal||'—'}</span></div><hr class="divider"/><label style="font-size:11px;color:var(--sub)">Observações do mês</label><textarea id="rmObs" placeholder="Anote aqui observações do mês..." style="resize:vertical;height:70px;font-size:12px;margin-top:4px"></textarea></div>`;
+  audit('EXPORTACAO','Relatório mensal '+mesLabel+' gerado');
+}
+function imprimirMensal(){const c=document.getElementById('relMensalPrint');if(!c)return;const obs=((document.getElementById('rmObs')||{}).value||'').replace(/</g,'&lt;');let inner=c.innerHTML.replace(/<button[\s\S]*?<\/button>/g,'').replace(/<textarea[\s\S]*?<\/textarea>/,'<div style="border:1px solid #eee;padding:8px;min-height:50px;margin-top:4px">'+obs+'</div>');const w=window.open('','_blank');w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Relatório Mensal — VS Performance</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#222}h1{color:#1D9E75;font-size:18px;margin-bottom:6px}.ir{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #eee;font-size:13px}.ct{font-weight:600;font-size:14px}.divider{border:none;border-top:1px solid #ddd;margin:10px 0}</style></head><body><h1>VS Performance</h1>'+inner+'</body></html>');w.document.close();w.focus();setTimeout(()=>w.print(),400);}
 
 // ============================================================
 // INIT
