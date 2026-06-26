@@ -117,7 +117,10 @@ tr.cancelled td{opacity:.55}
 .spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--g);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 1rem}
 @keyframes spin{to{transform:rotate(360deg)}}
 .prod-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:1rem;margin-bottom:.75rem}
-@media(max-width:600px){.fr,.fr3,.fr4{grid-template-columns:1fr}.meta-grid{grid-template-columns:1fr}.topbar{height:auto;padding:.5rem;flex-wrap:wrap}.nav{order:3;width:100%;padding-bottom:.25rem}.content{padding:.875rem}}
+.qr-btn{flex:1;min-width:90px;background:var(--gl);color:var(--gd);border:1px solid #9FE1CB;border-radius:10px;padding:12px 10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.qr-btn:hover{background:#cfeee2}
+.venda-actions{display:flex;align-items:center;gap:10px}
+@media(max-width:600px){.fr,.fr3,.fr4{grid-template-columns:1fr}.meta-grid{grid-template-columns:1fr}.topbar{height:auto;padding:.5rem;flex-wrap:wrap}.nav{order:3;width:100%;padding-bottom:.25rem}.content{padding:.875rem}#p-venda input,#p-venda select{font-size:16px;padding:12px 12px}#p-venda .btn{width:100%;justify-content:center;padding:14px;font-size:15px}.venda-actions{position:sticky;bottom:0;background:var(--bg);padding:10px 0;margin:0 -.2rem;z-index:30;box-shadow:0 -4px 12px rgba(0,0,0,.06)}}
 </style>
 </head>
 <body>
@@ -183,14 +186,15 @@ tr.cancelled td{opacity:.55}
       </div>
       <div id="estSideCard" class="sidebar-est"></div>
       <div id="dashHoje"></div>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:4px"><select id="compPeriodo" onchange="renderDash()" style="width:auto;font-size:11px;padding:4px 8px"><option value="7">Semana vs semana</option><option value="15">15 dias vs 15 dias</option><option value="30">30 dias vs 30 dias</option></select></div>
       <div id="dashCompara"></div>
       <p style="font-size:11px;color:var(--sub);margin:0 0 6px 2px">Resumo do período selecionado</p>
       <div class="metrics" id="dashMet"></div>
       <div class="meta-grid">
-        <div class="card" style="margin:0"><p class="ct">Lucro do mês — meta R$ 6.000</p><div id="dashMetaLucroMes"></div></div>
-        <div class="card" style="margin:0"><p class="ct">Vendas do mês — meta R$ 12.000</p><div id="dashMetaBrutoMes"></div></div>
-        <div class="card" style="margin:0"><p class="ct">Lucro da semana — meta R$ 1.500</p><div id="dashMetaLucroSem"></div></div>
-        <div class="card" style="margin:0"><p class="ct">Vendas da semana — meta R$ 3.000</p><div id="dashMetaBrutoSem"></div></div>
+        <div class="card" style="margin:0"><p class="ct">Lucro do mês</p><div id="dashMetaLucroMes"></div></div>
+        <div class="card" style="margin:0"><p class="ct">Vendas do mês</p><div id="dashMetaBrutoMes"></div></div>
+        <div class="card" style="margin:0"><p class="ct">Lucro da semana</p><div id="dashMetaLucroSem"></div></div>
+        <div class="card" style="margin:0"><p class="ct">Vendas da semana</p><div id="dashMetaBrutoSem"></div></div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.875rem;margin-top:.875rem">
         <div class="card"><p class="ct">Formas de pagamento (lucro)</p><div id="dashPgto"></div></div>
@@ -203,6 +207,12 @@ tr.cancelled td{opacity:.55}
     <div id="p-venda" class="page">
       <p class="stitle">Registrar nova venda</p>
       <div class="card">
+        <p style="font-size:12px;color:var(--sub);margin-bottom:6px"><i class="ti ti-bolt"></i> Venda rápida</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+          <button type="button" class="qr-btn" onclick="vendaRapida('TG','caixa')">TG Caixa</button>
+          <button type="button" class="qr-btn" onclick="vendaRapida('TG','frasco')">TG Frasco</button>
+          <button type="button" class="qr-btn" onclick="vendaRapida('RETA_VERDE','caixa')">Retatrutide Caixa</button>
+        </div>
         <div class="fr">
           <div class="fg"><label>Produto</label><select id="vProd" onchange="updateVF()"></select></div>
           <div class="fg"><label>Tipo</label><select id="vTipo" onchange="updateVF()"></select></div>
@@ -248,7 +258,7 @@ tr.cancelled td{opacity:.55}
             <div class="fg"><label>Custo total</label><input type="text" id="vCustoTot" readonly/></div>
           </div>
         </div>
-        <div style="display:flex;align-items:center;gap:10px">
+        <div class="venda-actions">
           <button class="btn" onclick="regVenda()"><i class="ti ti-check"></i> Registrar venda</button>
           <span id="vEstInfo" style="font-size:12px;color:var(--sub)"></span>
         </div>
@@ -318,14 +328,15 @@ tr.cancelled td{opacity:.55}
     </div>
 
     <div id="p-estoque" class="page">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
         <p class="stitle" style="margin:0">Estoque</p>
-        <div style="display:flex;gap:8px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn-s" onclick="exportEstoque()"><i class="ti ti-file-spreadsheet"></i> Exportar</button>
-          <button class="btn-s" onclick="showRepModal()"><i class="ti ti-package"></i> Reposição</button>
-          <button class="btn-s" onclick="showEntModal()"><i class="ti ti-plus"></i> Entrada</button>
+          <button class="btn-s" onclick="showEntModal()"><i class="ti ti-adjustments"></i> Ajuste (sem custo)</button>
+          <button class="btn" onclick="showRepModal()"><i class="ti ti-package"></i> Nova compra</button>
         </div>
       </div>
+      <div id="estTotal" class="sidebar-est"></div>
       <div id="estCards"></div>
       <div class="card"><p class="ct">Histórico de reposições</p><div id="repList"></div></div>
     </div>
@@ -430,6 +441,7 @@ tr.cancelled td{opacity:.55}
         <div class="metrics" id="relMet"></div>
         <div class="card"><p class="ct">Por produto</p><div id="relProd"></div></div>
         <div class="card"><p class="ct">Por forma de pagamento</p><div id="relFin"></div></div>
+        <div class="card"><p class="ct">Saídas por tipo (no período) × custos</p><div id="relSaidas"></div></div>
         <div class="card" style="padding:0"><div class="tw"><table>
           <thead><tr><th>Data</th><th>Status</th><th>Produto</th><th>Tipo</th><th>Qtd</th><th>Cliente</th><th>Pgto</th><th>Bruto</th><th>Custo</th><th>Taxa</th><th>Lucro</th><th>Margem</th></tr></thead>
           <tbody id="relBody"></tbody>
@@ -439,11 +451,11 @@ tr.cancelled td{opacity:.55}
 
     <div id="p-config" class="page">
       <p class="stitle">Configurações</p>
-      <div class="card"><p class="ct">Metas</p>
-        <div class="ir"><span>Lucro mensal</span><span>R$ 6.000,00</span></div>
-        <div class="ir"><span>Vendas brutas mensal</span><span>R$ 12.000,00</span></div>
-        <div class="ir"><span>Lucro semanal</span><span>R$ 1.500,00</span></div>
-        <div class="ir"><span>Vendas brutas semanal</span><span>R$ 3.000,00</span></div>
+      <div class="card"><p class="ct">Metas (editáveis)</p>
+        <div class="fr"><div class="fg"><label>Lucro mensal (R$)</label><input type="number" id="cfgLucroMes" step="0.01"/></div><div class="fg"><label>Vendas brutas mensal (R$)</label><input type="number" id="cfgBrutoMes" step="0.01"/></div></div>
+        <div class="fr"><div class="fg"><label>Lucro semanal (R$)</label><input type="number" id="cfgLucroSem" step="0.01"/></div><div class="fg"><label>Vendas brutas semanal (R$)</label><input type="number" id="cfgBrutoSem" step="0.01"/></div></div>
+        <button class="btn" onclick="salvarMetas()"><i class="ti ti-check"></i> Salvar metas</button>
+        <p style="font-size:11px;color:var(--sub);margin-top:8px">Pode alterar a qualquer momento — salva na nuvem e atualiza o dashboard.</p>
       </div>
       <div class="card"><p class="ct">Custos dos produtos</p>
         <div class="ir"><span>Gerenciar custos</span><span><button class="btn-s" onclick="gp('produtos',document.getElementById('nb-produtos'))">Abrir aba Produtos</button></span></div>
@@ -510,7 +522,7 @@ async function sbDelete(table,id){
 // ============================================================
 const NAMES={'victor.moufarregee@gmail.com':'Victor','xsthexsouza@gmail.com':'Stefany'};
 let authToken='';
-const META_LUCRO_MES=6000,META_BRUTO_MES=12000,META_LUCRO_SEM=1500,META_BRUTO_SEM=3000;
+let META_LUCRO_MES=6000,META_BRUTO_MES=12000,META_LUCRO_SEM=1500,META_BRUTO_SEM=3000;
 const RECOMPRA_DIAS={frasco:30,caixa:90}; // dias estimados de duração para alertar recompra
 let sessionTimer,loggedIn=false,currentUser='',finTabAtual='all';
 let DB={produtos:[],vendas:[],clientes:[],saidas:[],reposicoes:[],auditLog:[]};
@@ -581,6 +593,7 @@ async function loadAll(){
     DB.saidas=Array.isArray(saidas)?saidas.map(mapSaida):[];
     DB.reposicoes=Array.isArray(reps)?reps.map(mapRep):[];
     DB.auditLog=Array.isArray(logs)?logs:[];
+    try{const cfg=await sbGet('config','id=eq.1');if(Array.isArray(cfg)&&cfg[0]){const c=cfg[0];if(c.meta_lucro_mes!=null)META_LUCRO_MES=+c.meta_lucro_mes;if(c.meta_bruto_mes!=null)META_BRUTO_MES=+c.meta_bruto_mes;if(c.meta_lucro_sem!=null)META_LUCRO_SEM=+c.meta_lucro_sem;if(c.meta_bruto_sem!=null)META_BRUTO_SEM=+c.meta_bruto_sem;}}catch(e){}
   }catch(e){showToast('Erro ao carregar dados. Verifique a conexão.','err');}
   hideLoading();
 }
@@ -648,7 +661,15 @@ function gp(id,btn){
   if(id==='dash')renderDash();if(id==='estoque')renderEst();if(id==='hist')renderHist();
   if(id==='clientes')renderCli();if(id==='fiado')renderFiado();if(id==='financeiro')renderFin();
   if(id==='graficos')renderGraficos();if(id==='cancelamentos')renderCancelamentos();if(id==='auditoria')renderAudit();
-  if(id==='produtos')renderProdutos();if(id==='recontato')renderRecontato();
+  if(id==='produtos')renderProdutos();if(id==='recontato')renderRecontato();if(id==='config')populateConfig();
+}
+function populateConfig(){const s=(id,v)=>{const e=document.getElementById(id);if(e)e.value=v;};s('cfgLucroMes',META_LUCRO_MES);s('cfgBrutoMes',META_BRUTO_MES);s('cfgLucroSem',META_LUCRO_SEM);s('cfgBrutoSem',META_BRUTO_SEM);}
+async function salvarMetas(){
+  const lm=parseFloat(document.getElementById('cfgLucroMes').value)||0,bm=parseFloat(document.getElementById('cfgBrutoMes').value)||0,ls=parseFloat(document.getElementById('cfgLucroSem').value)||0,bs=parseFloat(document.getElementById('cfgBrutoSem').value)||0;
+  showLoading('Salvando metas...');
+  try{await sbPatch('config',1,{meta_lucro_mes:lm,meta_bruto_mes:bm,meta_lucro_sem:ls,meta_bruto_sem:bs});META_LUCRO_MES=lm;META_BRUTO_MES=bm;META_LUCRO_SEM=ls;META_BRUTO_SEM=bs;await audit('FINANCEIRO','Metas atualizadas por '+currentUser);}
+  catch(e){hideLoading();showToast('Erro ao salvar metas.','err');return;}
+  hideLoading();renderDash();showToast('Metas salvas!');
 }
 function renderAll(){renderAlertas();renderDash();renderEst();renderHist();renderCli();renderFiado();renderFin();renderCancelamentos();renderProdutos();renderRecontato();updateFiadoBadge();}
 
@@ -684,6 +705,7 @@ function updateVF(){
 }
 function updatePgto(){const v=document.getElementById('vPgto').value;document.getElementById('gParcelas').style.display=v==='parcelado'?'flex':'none';document.getElementById('fiadoInfo').style.display=v==='fiado'?'block':'none';document.getElementById('vTaxa').value='0';if(v==='parcelado'){document.getElementById('vAdvanced').style.display='block';document.getElementById('advBtn').style.display='none';}calcT();}
 function toggleAdv(){const a=document.getElementById('vAdvanced'),b=document.getElementById('advBtn');const sh=a.style.display==='none';a.style.display=sh?'block':'none';b.innerHTML=sh?'<i class="ti ti-adjustments-horizontal"></i> Menos opções':'<i class="ti ti-adjustments-horizontal"></i> Mais opções (desconto, taxa, parcelas, data)';}
+function vendaRapida(prodId,tipo){const p=getProd(prodId);if(!p){showToast('Cadastre o produto primeiro.','err');return;}document.getElementById('vProd').value=prodId;updateVF();if(tipo==='frasco'&&p.vendeFrasco){document.getElementById('vTipo').value='frasco';updateVF();}const q=document.getElementById('vQtd');if(q){q.focus();}showToast(p.nome+' '+tipoLabel(document.getElementById('vTipo').value)+' selecionado ✓');}
 function calcT(){
   const p=getProd(document.getElementById('vProd').value),t=document.getElementById('vTipo').value,q=parseFloat(document.getElementById('vQtd').value)||0,vo=parseFloat(document.getElementById('vValOrig').value)||0,dc=parseFloat(document.getElementById('vDesc').value)||0,vf=Math.max(0,vo-dc),tx=parseFloat(document.getElementById('vTaxa').value)||0,qm=document.getElementById('vTaxaQuem').value;
   const b=q*vf,c=p?cuProd(p,t,q):0,tv=b*(tx/100),l=qm==='nos'?b-tv:b,mg=margemPct(b,l-c);
@@ -880,11 +902,15 @@ function renderDash(){
   document.getElementById('dashMetaBrutoMes').innerHTML=metaBar(brutoMes,META_BRUTO_MES);
   document.getElementById('dashMetaLucroSem').innerHTML=metaBar(lucroSem,META_LUCRO_SEM);
   document.getElementById('dashMetaBrutoSem').innerHTML=metaBar(brutoSem,META_BRUTO_SEM);
-  const semAnt=new Date(sem);semAnt.setDate(semAnt.getDate()-7);const semAntS=semAnt.toISOString().split('T')[0];
-  const brutoSemAnt=DB.vendas.filter(v=>!v.cancelada&&v.data>=semAntS&&v.data<sem).reduce((a,v)=>a+v.bruto,0);
-  const lucroSemAnt=DB.vendas.filter(v=>!v.cancelada&&v.data>=semAntS&&v.data<sem).reduce((a,v)=>a+v.lucroLiq,0);
+  const cmpDias=parseInt((document.getElementById('compPeriodo')||{}).value||7);
+  const _d=n=>{const x=new Date();x.setDate(x.getDate()-n);return x.toISOString().split('T')[0];};
+  const a1=_d(cmpDias),a2=_d(cmpDias*2);
+  const atuaisV=DB.vendas.filter(v=>!v.cancelada&&v.data>=a1),antesV=DB.vendas.filter(v=>!v.cancelada&&v.data>=a2&&v.data<a1);
+  const brutoAtual=atuaisV.reduce((a,v)=>a+v.bruto,0),brutoAntes=antesV.reduce((a,v)=>a+v.bruto,0);
+  const lucroAtual=atuaisV.reduce((a,v)=>a+v.lucroLiq,0),lucroAntes=antesV.reduce((a,v)=>a+v.lucroLiq,0);
   function cmp(atual,ant){const d=ant>0?((atual-ant)/ant*100):(atual>0?100:0);const cor=d>0?'var(--g)':d<0?'var(--r)':'var(--sub)';const ic=d>0?'▲':d<0?'▼':'■';return `<span style="color:${cor};font-weight:600">${ic} ${Math.abs(d).toFixed(0)}%</span>`;}
-  document.getElementById('dashCompara').innerHTML=`<div class="card" style="margin-bottom:.875rem"><p class="ct">Comparativo — esta semana vs semana passada</p><div class="ir"><span>Vendas: <strong>${R(brutoSem)}</strong> <span style="color:var(--sub)">(antes ${R(brutoSemAnt)})</span></span>${cmp(brutoSem,brutoSemAnt)}</div><div class="ir"><span>Lucro: <strong>${R(lucroSem)}</strong> <span style="color:var(--sub)">(antes ${R(lucroSemAnt)})</span></span>${cmp(lucroSem,lucroSemAnt)}</div></div>`;
+  const lblP=cmpDias===7?'esta semana vs semana passada':cmpDias+' dias atuais vs '+cmpDias+' dias anteriores';
+  document.getElementById('dashCompara').innerHTML=`<div class="card" style="margin-bottom:.875rem"><p class="ct">Comparativo — ${lblP}</p><div class="ir"><span>Vendas: <strong>${R(brutoAtual)}</strong> <span style="color:var(--sub)">(antes ${R(brutoAntes)})</span></span>${cmp(brutoAtual,brutoAntes)}</div><div class="ir"><span>Lucro: <strong>${R(lucroAtual)}</strong> <span style="color:var(--sub)">(antes ${R(lucroAntes)})</span></span>${cmp(lucroAtual,lucroAntes)}</div></div>`;
   // BLOCO HOJE
   const hj=today(),hjBR=fmtD(hj);
   const vHoje=DB.vendas.filter(v=>!v.cancelada&&v.data===hj);
@@ -916,6 +942,7 @@ function renderDash(){
 // ESTOQUE
 // ============================================================
 function renderEst(){
+  const elT=document.getElementById('estTotal');if(elT)elT.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center"><div><p style="font-size:13px;font-weight:500">Valor total em estoque</p><p style="font-size:11px;color:var(--sub)">${DB.produtos.filter(p=>p.ativo).length} produto(s)</p></div><span class="est-val">${R(valorEstTotal())}</span></div>`;
   const wrap=document.getElementById('estCards');
   if(!DB.produtos.length){wrap.innerHTML='<div class="card" style="text-align:center;color:var(--sub);padding:1.5rem">Nenhum produto cadastrado. Vá em <strong>Produtos</strong> para começar.</div>';}
   else{
@@ -1096,11 +1123,13 @@ async function delCli(id){
 }
 function verCli(id){
   const c=DB.clientes.find(x=>x.id==id);if(!c)return;
-  const vs=DB.vendas.filter(v=>v.cliId==c.id&&!v.cancelada),l=vs.reduce((a,v)=>a+v.lucroLiq,0);
+  const info=clienteInfo(c),vs=info.vs;
   const pgtoMap={pix:'Pix',credito:'Crédito',debito:'Débito',dinheiro:'Dinheiro',parcelado:'Parcelado',fiado:'Fiado'};
   const wn=c.tel.replace(/\D/g,'');
+  const totalComprado=vs.reduce((a,v)=>a+v.bruto,0),ticket=info.n?totalComprado/info.n:0;
+  const fiadoAberto=vs.filter(v=>v.pgto==='fiado'&&!v.quitado).reduce((a,v)=>a+v.bruto,0);
   document.getElementById('cliDetNome').textContent=c.nome;
-  document.getElementById('cliDetBody').innerHTML=`<div class="ir"><span>WhatsApp</span><span>${c.tel} <a href="https://wa.me/55${wn}" target="_blank" class="btn-wpp" style="font-size:10px;padding:2px 7px;display:inline-flex"><i class="ti ti-brand-whatsapp"></i></a></span></div><div class="ir"><span>Compras</span><span>${vs.length}</span></div><div class="ir"><span>Lucro gerado</span><span style="color:var(--g)">${R(l)}</span></div>${c.obs?`<div class="ir"><span>Obs</span><span>${c.obs}</span></div>`:''}<hr class="divider"/>${vs.map(v=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px"><span>${fmtD(v.data)} · ${prodNome(v.prod)} · ${tipoLabel(v.tipo)} x${v.qtd} · ${pgtoMap[v.pgto]}${v.pgto==='fiado'?v.quitado?' ✓':' ⚠':''}</span><span style="font-weight:500">${R(v.lucroLiq)}</span></div>`).join('')||'<p style="font-size:12px;color:var(--sub)">Sem compras.</p>'}`;
+  document.getElementById('cliDetBody').innerHTML=`<div style="margin-bottom:10px"><a href="https://wa.me/55${wn}" target="_blank" class="btn-wpp"><i class="ti ti-brand-whatsapp"></i> WhatsApp ${c.tel}</a></div><div class="ir"><span>Total comprado</span><span style="font-weight:600">${R(totalComprado)}</span></div><div class="ir"><span>Compras</span><span>${info.n}</span></div><div class="ir"><span>Ticket médio</span><span>${R(ticket)}</span></div><div class="ir"><span>Última compra</span><span>${info.ultima?fmtD(info.ultima.data):'—'}</span></div><div class="ir"><span>Produto mais comprado</span><span>${info.prodTop?prodNome(info.prodTop):'—'}</span></div><div class="ir"><span>Lucro gerado</span><span style="color:var(--g)">${R(info.lucro)}</span></div><div class="ir"><span>Fiado em aberto</span><span style="color:${fiadoAberto>0?'var(--r)':'var(--sub)'};font-weight:500">${R(fiadoAberto)}</span></div>${c.obs?`<div class="ir"><span>Obs</span><span>${c.obs}</span></div>`:''}<hr class="divider"/><p style="font-size:11px;color:var(--sub);margin-bottom:4px">Compras (valor)</p>${[...vs].reverse().map(v=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px"><span>${fmtD(v.data)} · ${prodNome(v.prod)} · ${tipoLabel(v.tipo)} x${v.qtd} · ${pgtoMap[v.pgto]}${v.pgto==='fiado'?v.quitado?' ✓':' ⚠':''}</span><span style="font-weight:500">${R(v.bruto)}</span></div>`).join('')||'<p style="font-size:12px;color:var(--sub)">Sem compras.</p>'}`;
   document.getElementById('cliDetModal').style.display='flex';
 }
 
@@ -1174,9 +1203,14 @@ function renderGraficos(){
 function gerarRel(){
   const de=document.getElementById('rDe').value,ate=document.getElementById('rAte').value,pgto=document.getElementById('rPgto').value;
   let v=DB.vendas.filter(x=>!x.cancelada);if(de)v=v.filter(x=>x.data>=de);if(ate)v=v.filter(x=>x.data<=ate);if(pgto)v=v.filter(x=>x.pgto===pgto);
-  const b=v.reduce((a,x)=>a+x.bruto,0),c=v.reduce((a,x)=>a+x.custo,0),tx=v.reduce((a,x)=>a+x.taxaVal,0),l=v.reduce((a,x)=>a+x.lucroLiq,0),s=DB.saidas.reduce((a,x)=>a+x.val,0);
+  const b=v.reduce((a,x)=>a+x.bruto,0),c=v.reduce((a,x)=>a+x.custo,0),tx=v.reduce((a,x)=>a+x.taxaVal,0),l=v.reduce((a,x)=>a+x.lucroLiq,0);
+  let sd=DB.saidas.slice();if(de)sd=sd.filter(x=>x.data>=de);if(ate)sd=sd.filter(x=>x.data<=ate);
+  const s=sd.reduce((a,x)=>a+x.val,0),rec=v.filter(x=>x.pgto!=='fiado'||x.quitado).reduce((a,x)=>a+x.liq,0),caixa=rec-s;
   document.getElementById('relResult').style.display='block';
-  document.getElementById('relMet').innerHTML=`<div class="met"><div class="met-l">Transações</div><div class="met-v">${v.length}</div></div><div class="met"><div class="met-l">Receita bruta</div><div class="met-v">${R(b)}</div></div><div class="met"><div class="met-l">Custo produto</div><div class="met-v" style="color:var(--r)">${R(c)}</div></div><div class="met"><div class="met-l">Taxas</div><div class="met-v" style="color:var(--r)">${R(tx)}</div></div><div class="met"><div class="met-l">Total saídas</div><div class="met-v" style="color:var(--r)">${R(s)}</div></div><div class="met"><div class="met-l">Lucro líquido</div><div class="met-v" style="color:var(--g)">${R(l)}</div></div>`;
+  document.getElementById('relMet').innerHTML=`<div class="met"><div class="met-l">Transações</div><div class="met-v">${v.length}</div></div><div class="met"><div class="met-l">Receita bruta</div><div class="met-v">${R(b)}</div></div><div class="met"><div class="met-l">Custo produto</div><div class="met-v" style="color:var(--r)">${R(c)}</div></div><div class="met"><div class="met-l">Lucro das vendas</div><div class="met-v" style="color:var(--g)">${R(l)}</div></div><div class="met"><div class="met-l">Recebido</div><div class="met-v" style="color:var(--bl)">${R(rec)}</div></div><div class="met"><div class="met-l">Saídas (período)</div><div class="met-v" style="color:var(--r)">${R(s)}</div></div><div class="met"><div class="met-l">Resultado (caixa)</div><div class="met-v" style="color:${caixa>=0?'var(--g)':'var(--r)'}">${R(caixa)}</div></div>`;
+  const tipoMapS={prolabore:'Pró-labore',retirada:'Retirada',fornecedor:'Fornecedor',despesa:'Despesa',imposto:'Imposto',outros:'Outros'};
+  const bs={};sd.forEach(x=>bs[x.tipo]=(bs[x.tipo]||0)+x.val);
+  const relS=document.getElementById('relSaidas');if(relS)relS.innerHTML=(Object.keys(bs).map(k=>`<div class="ir"><span>${tipoMapS[k]||k}</span><span style="color:var(--r)">${R(bs[k])}</span></div>`).join('')||'<p style="font-size:13px;color:var(--sub)">Sem saídas no período.</p>')+`<hr class="divider"/><div class="ir"><span>Total saídas</span><span style="color:var(--r);font-weight:500">${R(s)}</span></div><div class="ir"><span>Custo dos produtos vendidos</span><span>${R(c)}</span></div><p style="font-size:10px;color:var(--sub);margin-top:4px">No modo caixa, o pagamento ao fornecedor entra em "Saídas". O "custo dos produtos vendidos" mostra quanto desse estoque já virou venda no período.</p>`;
   const pgtoMap={pix:'Pix',credito:'Crédito',debito:'Débito',dinheiro:'Dinheiro',parcelado:'Parcelado',fiado:'Fiado'};
   const by={};v.forEach(x=>{const k=pgtoMap[x.pgto]||x.pgto;by[k]=by[k]||{n:0,l:0};by[k].n++;by[k].l+=x.lucroLiq;});
   document.getElementById('relFin').innerHTML=Object.entries(by).map(([k,s])=>`<div class="ir"><span>${k}</span><span>${s.n} venda(s) · ${R(s.l)}</span></div>`).join('')||'<p style="font-size:13px;color:var(--sub)">Sem dados.</p>';
