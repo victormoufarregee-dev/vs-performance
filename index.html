@@ -308,7 +308,7 @@ tr.cancelled td{opacity:.55}
         <div class="card" style="margin:0"><p class="ct">Victor — retiradas</p><div id="socioVictor"></div></div>
         <div class="card" style="margin:0"><p class="ct">Stefany — retiradas</p><div id="socioStefany"></div></div>
       </div>
-      <div class="card"><p class="ct">Conta dos fornecedores (o que a empresa ainda deve)</p><div id="fornBody"></div><p style="font-size:11px;color:var(--sub);margin-top:6px">Mercadoria fornecida (lançada em "Nova compra") menos o que já foi pago a cada fornecedor (saídas tipo "Fornecedor"). Saldo positivo = a empresa ainda deve.</p></div>
+      <div class="card"><p class="ct">Conta dos fornecedores (o que a empresa ainda deve)</p><div id="fornBody"></div><p style="font-size:11px;color:var(--sub);margin-top:6px">Mercadoria fornecida = custo do que já foi vendido + custo do estoque atual (tudo que entrou). Menos o que já foi pago (saídas tipo "Pagamento fornecedor") = o que a empresa ainda deve. Atualiza sozinho conforme vende e paga.</p></div>
     </div>
 
     <div id="p-clientes" class="page">
@@ -873,9 +873,15 @@ function renderFin(){
   if(!s.length){body.innerHTML='';empty.style.display='';}else{empty.style.display='none';
   body.innerHTML=s.map(x=>`<tr><td>${fmtD(x.data)}</td><td><span class="badge ${tipoBadge[x.tipo]||'bdin'}">${tipoMap[x.tipo]||x.tipo}</span></td><td>${['prolabore','retirada'].includes(x.tipo)?x.socio:'—'}</td><td>${x.desc}</td><td><span class="badge bdin">${x.pgto}</span></td><td style="font-weight:500;color:var(--r)">${R(x.val)}</td><td><button class="btn-d" onclick="delSaida(${x.id})"><i class="ti ti-trash"></i></button></td></tr>`).join('');}
   ['Victor','Stefany'].forEach(so=>{const el=document.getElementById('socio'+so),itens=DB.saidas.filter(x=>['prolabore','retirada'].includes(x.tipo)&&(x.socio===so||x.socio==='Ambos')),tot2=itens.reduce((a,x)=>a+(x.socio==='Ambos'?x.val/2:x.val),0);el.innerHTML=itens.length?`<div class="ir"><span>Total retirado</span><span style="color:var(--r)">${R(tot2)}</span></div>${[...itens].slice(-3).reverse().map(x=>`<div class="ir"><span>${fmtD(x.data)} · ${x.desc}</span><span>${R(x.socio==='Ambos'?x.val/2:x.val)}</span></div>`).join('')}`:'<p style="font-size:12px;color:var(--sub)">Nenhuma retirada.</p>';});
-  const forns=new Set();DB.reposicoes.forEach(r=>{if(r.forn)forns.add(r.forn);});DB.saidas.forEach(s=>{if(s.tipo==='fornecedor'&&s.socio)forns.add(s.socio);});
   const fb=document.getElementById('fornBody');
-  if(fb){const arr=[...forns];fb.innerHTML=arr.length?arr.map(f=>{const fornecido=DB.reposicoes.filter(r=>r.forn===f).reduce((a,r)=>a+(r.custTotal||0),0),pago=DB.saidas.filter(s=>s.tipo==='fornecedor'&&s.socio===f).reduce((a,s)=>a+s.val,0),saldo=fornecido-pago;return `<div class="ir" style="flex-wrap:wrap;gap:4px"><span style="font-weight:500">${f}</span><span>Fornecido ${R(fornecido)} · Pago ${R(pago)} · <strong style="color:${saldo>0.005?'var(--r)':'var(--g)'}">Deve ${R(saldo)}</strong></span></div>`;}).join(''):'<p style="font-size:12px;color:var(--sub)">Nenhum fornecedor registrado ainda. Lance as compras em Estoque → Nova compra (escolhendo o fornecedor) e os pagamentos em Financeiro → Pagamento fornecedor.</p>';}
+  if(fb){
+    const mercadoriaFornecida=custoTot+valorEstTotal();
+    const pagoForn=DB.saidas.filter(s=>s.tipo==='fornecedor').reduce((a,s)=>a+s.val,0);
+    const faltaPagar=mercadoriaFornecida-pagoForn;
+    const pagoPor={};DB.saidas.filter(s=>s.tipo==='fornecedor').forEach(s=>{const n=s.socio||'(sem nome)';pagoPor[n]=(pagoPor[n]||0)+s.val;});
+    const perF=Object.keys(pagoPor).map(n=>`<div class="ir"><span>Já pago a ${n}</span><span style="color:var(--g)">${R(pagoPor[n])}</span></div>`).join('');
+    fb.innerHTML=`<div class="ir"><span>Mercadoria fornecida (vendida + em estoque)</span><span style="font-weight:500">${R(mercadoriaFornecida)}</span></div><div class="ir"><span>Custo já vendido</span><span style="color:var(--sub)">${R(custoTot)}</span></div><div class="ir"><span>Custo do estoque atual</span><span style="color:var(--sub)">${R(valorEstTotal())}</span></div><div class="ir"><span>Já pago aos fornecedores</span><span style="color:var(--g)">${R(pagoForn)}</span></div><hr class="divider"/><div class="ir"><span style="font-weight:500">Falta pagar ao(s) fornecedor(es)</span><span style="font-size:15px;font-weight:600;color:${faltaPagar>0.5?'var(--r)':'var(--g)'}">${R(faltaPagar)}</span></div>${perF?'<hr class="divider"/>'+perF:''}`;
+  }
 }
 async function delSaida(id){
   showLoading('Removendo...');
