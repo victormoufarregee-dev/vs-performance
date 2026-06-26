@@ -1,0 +1,14 @@
+{
+  "name": "VS Performance",
+  "short_name": "VS Performance",
+  "description": "Sistema de vendas, estoque, fiado e financeiro da VS Performance",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f1210",
+  "theme_color": "#1D9E75",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
