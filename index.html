@@ -1901,7 +1901,7 @@ function renderEst(){
   }
   const rl=document.getElementById('repList');
   if(!DB.reposicoes.length){rl.innerHTML='<p style="font-size:13px;color:var(--sub)">Nenhuma reposição.</p>';return;}
-  rl.innerHTML=`<div class="tw"><table><thead><tr><th>Data</th><th>Produto</th><th>Tipo</th><th>Qtd</th><th>Custo unit.</th><th>Frete</th><th>Total</th><th>Fornecedor</th><th>Obs</th></tr></thead><tbody>${[...DB.reposicoes].reverse().map(r=>`<tr><td>${fmtD(r.data)}</td><td>${prodNome(r.prod)}</td><td>${tipoLabel(r.tipo)}</td><td>${r.qtd}</td><td>${R(r.custUnit)}</td><td>${r.frete?R(r.frete):'—'}</td><td style="font-weight:500">${R(r.custTotal)}</td><td>${r.forn||'—'}</td><td style="font-size:11px;color:var(--sub)">${r.obs||'—'}</td></tr>`).join('')}</tbody></table></div>`;
+  rl.innerHTML=`<div class="tw"><table><thead><tr><th>Data</th><th>Produto</th><th>Tipo</th><th>Qtd</th><th>Custo unit.</th><th>Frete</th><th>Total</th><th>Fornecedor</th><th>Obs</th><th></th></tr></thead><tbody>${[...DB.reposicoes].reverse().map(r=>`<tr><td>${fmtD(r.data)}</td><td>${prodNome(r.prod)}</td><td>${tipoLabel(r.tipo)}</td><td>${r.qtd}</td><td>${R(r.custUnit)}</td><td>${r.frete?R(r.frete):'—'}</td><td style="font-weight:500">${R(r.custTotal)}</td><td>${r.forn||'—'}</td><td style="font-size:11px;color:var(--sub)">${r.obs||'—'}</td><td><button class="btn-s" style="padding:4px 7px;font-size:11px;color:var(--r)" title="Estornar esta compra" onclick="estornarCompra(${r.id})"><i class="ti ti-trash"></i></button></td></tr>`).join('')}</tbody></table></div>`;
 }
 function updateEntTipo(){const p=getProd(document.getElementById('entProd').value);document.getElementById('entTipo').innerHTML=tipoOptions(p);}
 function showEntModal(){if(!DB.produtos.length){showToast('Cadastre um produto primeiro.','err');return;}populateProdSelects();updateEntTipo();document.getElementById('entMotivo').value='';document.getElementById('entOp').value='add';document.getElementById('entQtd').value='1';document.getElementById('entModal').style.display='flex';}
@@ -2102,7 +2102,7 @@ function renderLotes(){
       <td>${R(r.custTotal)}</td>
       <td>${r.forn||'—'}</td>
       <td style="font-size:11px;color:var(--sub);max-width:220px;white-space:normal">${(r.notaLote||r.obs||'—')}</td>
-      <td><button class="btn-s" style="padding:4px 7px;font-size:11px" onclick="abrirLote(${r.id})"><i class="ti ti-edit"></i></button></td>
+      <td style="white-space:nowrap"><button class="btn-s" style="padding:4px 7px;font-size:11px" title="Editar lote/validade" onclick="abrirLote(${r.id})"><i class="ti ti-edit"></i></button> <button class="btn-s" style="padding:4px 7px;font-size:11px;color:var(--r)" title="Estornar esta compra" onclick="estornarCompra(${r.id})"><i class="ti ti-trash"></i></button></td>
     </tr>`;}).join('');
   el.innerHTML=aviso+`<div class="tw"><table><thead><tr><th>Compra</th><th>Produto</th><th>Lote</th><th>Validade</th><th>Situação</th><th>Qtd</th><th>Valor</th><th>Fornecedor</th><th>Anotações</th><th></th></tr></thead><tbody>${linhas}</tbody></table></div>`;
 }
@@ -2128,6 +2128,50 @@ async function salvarLote(){
     await audit('REPOSICAO',`Lote/validade de ${prodNome(r.prod)} (compra de ${fmtD(r.data)}) atualizado: lote ${lote||'—'} · validade ${validade?fmtD(validade):'—'}`);
   }catch(e){hideLoading();showToast('Erro ao salvar lote — '+(e.message||e),'err');return;}
   hideLoading();closeModal('loteModal');populateLotes();renderAll();showToast('Lote salvo!');
+}
+// ESTORNO DE COMPRA: desfaz um lançamento de estoque errado — devolve a quantidade,
+// recalcula o custo médio e apaga a saída que a compra criou no Financeiro (se criou).
+async function estornarCompra(id){
+  const r=DB.reposicoes.find(x=>x.id==id);if(!r){showToast('Compra não encontrada.','err');return;}
+  const p=getProd(r.prod);if(!p){showToast('O produto desta compra não existe mais — não dá para estornar.','err');return;}
+  const rot=tipoLabel(r.tipo).toLowerCase();
+  const disp=(r.tipo==='caixa')?(p.caixas||0):(p.frascos||0);
+  if(disp<r.qtd){showToast(`Não dá para estornar: o estoque tem ${disp} ${rot}(s) e a compra foi de ${r.qtd}. Parte já foi vendida — cancele as vendas primeiro.`,'err');return;}
+  const un=(r.tipo==='caixa')?r.qtd*fpcOf(p):r.qtd;
+  const unAtual=totFP(p),valAtual=valorEstProd(p);
+  const unRest=unAtual-un,valRest=valAtual-(+r.custTotal||0);
+  let novoCFraw=p.custoFrasco||0;
+  if(unRest>0)novoCFraw=valRest>0?valRest/unRest:0;
+  const novoCF=+novoCFraw.toFixed(2);
+  const sAuto=DB.saidas.find(s=>s.id===r.id+1&&s.tipo==='fornecedor'&&Math.abs((+s.val||0)-(+r.custTotal||0))<0.01);
+  const aviso=`Estornar esta compra?\n\n${prodNome(r.prod)} · ${r.qtd} ${rot}(s) · ${R(r.custTotal)}${r.forn?' · '+r.forn:''}\n\n`
+    +`· Estoque volta de ${disp} para ${disp-r.qtd} ${rot}(s).\n`
+    +`· Custo médio do frasco vai de ${R(p.custoFrasco)} para ${R(novoCF)}.\n`
+    +(sAuto?`· A saída de ${R(sAuto.val)} que esta compra lançou no Financeiro também será excluída.\n`:`· Nenhuma saída no Financeiro foi criada por esta compra.\n`)
+    +`\nIsso não dá para desfazer.`;
+  if(!confirm(aviso))return;
+  showLoading('Estornando compra...');
+  const bkp={caixas:p.caixas,frascos:p.frascos,custoCaixa:p.custoCaixa,custoFrasco:p.custoFrasco};
+  try{
+    if(r.tipo==='caixa')p.caixas-=r.qtd;else p.frascos-=r.qtd;
+    p.custoFrasco=novoCF;
+    p.custoCaixa=+(novoCFraw*fpcOf(p)).toFixed(2);
+    await sbDelete('reposicoes',r.id);
+    await sbPatch('produtos',p.id,{caixas:p.caixas,frascos:p.frascos,custo_caixa:p.custoCaixa,custo_frasco:p.custoFrasco});
+    DB.reposicoes=DB.reposicoes.filter(x=>x.id!==r.id);
+    await audit('REPOSICAO_ESTORNADA',`${prodNome(r.prod)} · ${r.qtd} ${rot}(s) · ${R(r.custTotal)}${r.forn?' · '+r.forn:''} — estornado por ${currentUser}`);
+  }catch(e){
+    p.caixas=bkp.caixas;p.frascos=bkp.frascos;p.custoCaixa=bkp.custoCaixa;p.custoFrasco=bkp.custoFrasco;
+    hideLoading();showToast('Erro ao estornar — nada foi alterado. '+(e.message||e),'err');return;
+  }
+  if(sAuto){
+    try{
+      await sbDelete('saidas',sAuto.id);
+      DB.saidas=DB.saidas.filter(s=>s.id!==sAuto.id);
+      await audit('FINANCEIRO_EXCLUIDO',`${sAuto.desc} — ${R(sAuto.val)} excluído no estorno da compra por ${currentUser}`);
+    }catch(e2){showToast('Compra estornada, mas a saída no Financeiro não saiu — exclua à mão. '+(e2.message||e2),'warn');}
+  }
+  hideLoading();populateLotes();renderAll();showToast('Compra estornada. Estoque e custo médio voltaram ao que eram.');
 }
 function exportLotes(){
   dlCSV('vs_lotes_validade.csv',
@@ -2161,7 +2205,8 @@ async function confReposicao(){
   showLoading('Salvando compra...');
   // CUSTO MÉDIO PONDERADO: combina o estoque atual com a nova compra (em frascos equivalentes)
   const unidadesAntes=totFP(p);
-  const valorAntes=unidadesAntes*(p.custoFrasco||0);
+  // valor real do estoque (caixas×custo da caixa + frascos×custo do frasco), não o frasco arredondado
+  const valorAntes=valorEstProd(p);
   const novasUnidades=(t==='caixa')?q*fpcOf(p):q;
   const frete=parseFloat((document.getElementById('repFrete')||{}).value)||0;
   const valorNovo=q*cu+frete;   // frete entra no custo real da mercadoria
@@ -2169,7 +2214,9 @@ async function confReposicao(){
   const unidadesDepois=unidadesAntes+novasUnidades;
   const novoCustoFrasco=unidadesDepois>0?(valorAntes+valorNovo)/unidadesDepois:((t==='caixa')?cu/fpcOf(p):cu);
   p.custoFrasco=+novoCustoFrasco.toFixed(2);
-  p.custoCaixa=+(p.custoFrasco*fpcOf(p)).toFixed(2);
+  // custo da caixa sai do valor SEM arredondar (senão o erro do frasco é multiplicado por fpc
+  // e o valor do estoque deixa de bater com o dinheiro realmente gasto)
+  p.custoCaixa=+(novoCustoFrasco*fpcOf(p)).toFixed(2);
   const id=Date.now();
   const total=q*cu+frete;
   const lote=(document.getElementById('repLote')||{}).value||'';
