@@ -628,7 +628,7 @@ tr.cancelled td{opacity:.55}
   </div>
   <div class="fg" style="margin:0"><label>Anota&ccedil;&otilde;es deste lote (campo livre)</label><textarea id="repNota" placeholder="Escreva o que quiser: fabricante, temperatura de transporte, aspecto do produto, n&uacute;mero da nota, quem entregou..." style="resize:vertical;height:64px;font-size:12px"></textarea></div>
   <p style="font-size:10px;color:var(--sub);margin-top:6px">O app avisa sozinho quando a validade estiver chegando. D&aacute; para preencher depois, em Estoque &rarr; Lotes e validade.</p>
-</div><div style="background:var(--secondary-bg);border-radius:8px;padding:10px 12px;margin-bottom:.75rem"><label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;margin:0"><input type="checkbox" id="repPagar" checked style="width:auto;margin:0" onchange="toggleRepPgto()"/> <span>J&aacute; paguei esta compra &mdash; lan&ccedil;ar tamb&eacute;m no Financeiro como sa&iacute;da</span></label><div id="repPgtoWrap" class="fg" style="margin-top:8px;margin-bottom:0"><label>Forma de pagamento da compra</label><select id="repPgto"><option value="pix">Pix</option><option value="dinheiro">Dinheiro</option><option value="credito">Cr&eacute;dito</option><option value="debito">D&eacute;bito</option><option value="transferencia">Transfer&ecirc;ncia</option></select></div><p style="font-size:10px;color:var(--sub);margin-top:6px">Desmarque se voc&ecirc; ainda vai pagar depois, ou se j&aacute; lan&ccedil;ou essa sa&iacute;da &agrave; m&atilde;o no Financeiro (evita contar duas vezes).</p></div><p style="font-size:11px;color:var(--sub);margin-bottom:.75rem">O custo informado aqui atualiza automaticamente o custo m&eacute;dio do produto.</p><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn-s" onclick="closeModal('repModal')">Cancelar</button><button class="btn" onclick="confReposicao()">Confirmar compra</button></div></div></div>
+</div><div style="background:var(--secondary-bg);border-radius:8px;padding:10px 12px;margin-bottom:.75rem"><p style="font-size:12px;margin:0;line-height:1.5"><strong>Esta compra n&atilde;o lan&ccedil;a sa&iacute;da no Financeiro.</strong></p><p style="font-size:10px;color:var(--sub);margin:6px 0 0;line-height:1.5">Quem banca a mercadoria &eacute; o V&iacute;ctor, ent&atilde;o a compra vira <strong>d&iacute;vida da empresa com ele</strong> &mdash; e aparece em Financeiro &rarr; Fornecedores. Quando a empresa te reembolsar, lance l&agrave; como <em>Pagamento fornecedor</em>.</p></div><p style="font-size:11px;color:var(--sub);margin-bottom:.75rem">O custo informado aqui atualiza automaticamente o custo m&eacute;dio do produto.</p><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn-s" onclick="closeModal('repModal')">Cancelar</button><button class="btn" onclick="confReposicao()">Confirmar compra</button></div></div></div>
 <div id="prodModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'prodModal')"><div class="modal"><h3><span id="prodModalTit">Novo produto</span></h3><input type="hidden" id="prodEditId"/><div class="fg" style="margin-bottom:10px"><label>Nome do produto *</label><input type="text" id="prodNome" placeholder="Ex: Retatrutide Verde"/></div><div class="fr"><div class="fg"><label>Como é vendido</label><select id="prodVende" onchange="updateProdForm()"><option value="caixa">Só em caixa</option><option value="ambos">Caixa e frasco (fracionado)</option></select></div><div class="fg" id="prodFpcWrap" style="display:none"><label>Frascos por caixa</label><input type="number" id="prodFpc" value="4" min="1" oninput="updateProdForm()"/></div></div><div class="fr"><div class="fg"><label>Custo da caixa (R$) *</label><input type="number" id="prodCustoCaixa" step="0.01" placeholder="0,00" oninput="updateProdForm()"/></div><div class="fg" id="prodCustoFrascoWrap" style="display:none"><label>Custo do frasco (R$)</label><input type="number" id="prodCustoFrasco" step="0.01" readonly/></div></div><div class="fr"><div class="fg"><label>Preço padrão de venda (R$)</label><input type="number" id="prodPreco" step="0.01" placeholder="0,00"/></div><div class="fg"><label>Estoque mínimo (caixas)</label><input type="number" id="prodMin" value="4" min="0"/></div></div><div class="fr"><div class="fg"><label>Estoque crítico (caixas)</label><input type="number" id="prodCrit" value="2" min="0"/></div><div class="fg"></div></div><p style="font-size:11px;color:var(--sub);margin-bottom:1rem">O custo do frasco é calculado automaticamente. O preço padrão já vem preenchido na venda (você pode mudar). Os limites definem o status do estoque (Bom/Baixo/Crítico).</p><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn-s" onclick="closeModal('prodModal')">Cancelar</button><button class="btn" onclick="salvarProduto()">Salvar</button></div></div></div>
 <div id="cliDetModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'cliDetModal')"><div class="modal" style="max-width:520px"><h3 id="cliDetNome"></h3><div id="cliDetBody"></div><div style="display:flex;justify-content:flex-end;margin-top:1rem"><button class="btn-s" onclick="closeModal('cliDetModal')">Fechar</button></div></div></div>
 <div id="quitarModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'quitarModal')"><div class="modal"><h3>Quitar dívida</h3><input type="hidden" id="qVendaId"/><p style="font-size:13px;margin-bottom:1rem" id="qInfo"></p><div class="fg" style="margin-bottom:1rem"><label>Forma recebida</label><select id="qPgto"><option value="pix">Pix</option><option value="credito">Crédito</option><option value="debito">Débito</option><option value="dinheiro">Dinheiro</option></select></div><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn-s" onclick="closeModal('quitarModal')">Cancelar</button><button class="btn" onclick="confirmarQuitar()">Confirmar</button></div></div></div>
@@ -2140,13 +2140,19 @@ async function estornarCompra(id){
   const un=(r.tipo==='caixa')?r.qtd*fpcOf(p):r.qtd;
   const unAtual=totFP(p),valAtual=valorEstProd(p);
   const unRest=unAtual-un,valRest=valAtual-(+r.custTotal||0);
-  let novoCFraw=p.custoFrasco||0;
-  if(unRest>0)novoCFraw=valRest>0?valRest/unRest:0;
+  // Desfazer o custo médio só é exato se nada foi vendido depois desta compra. Se houve venda,
+  // o valor do estoque já foi consumido e a subtração daria um custo baixo demais (ou zero, que
+  // trava a venda do produto). Nesse caso mantemos o custo médio atual e só devolvemos a quantidade.
+  const vendasDepois=DB.vendas.filter(v=>!v.cancelada&&v.prod===r.prod&&String(v.data||'')>=String(r.data||'')).length;
+  const podeRecalcular=vendasDepois===0&&unRest>0&&valRest>0;
+  const novoCFraw=podeRecalcular?valRest/unRest:(p.custoFrasco||0);
   const novoCF=+novoCFraw.toFixed(2);
   const sAuto=DB.saidas.find(s=>s.id===r.id+1&&s.tipo==='fornecedor'&&Math.abs((+s.val||0)-(+r.custTotal||0))<0.01);
   const aviso=`Estornar esta compra?\n\n${prodNome(r.prod)} · ${r.qtd} ${rot}(s) · ${R(r.custTotal)}${r.forn?' · '+r.forn:''}\n\n`
     +`· Estoque volta de ${disp} para ${disp-r.qtd} ${rot}(s).\n`
-    +`· Custo médio do frasco vai de ${R(p.custoFrasco)} para ${R(novoCF)}.\n`
+    +(podeRecalcular
+        ?`· Custo médio do frasco volta de ${R(p.custoFrasco)} para ${R(novoCF)}.\n`
+        :`· Custo médio do frasco continua ${R(p.custoFrasco)} — houve ${vendasDepois} venda(s) deste produto a partir da data da compra, então não dá para recalcular com segurança. Confira em Produtos depois.\n`)
     +(sAuto?`· A saída de ${R(sAuto.val)} que esta compra lançou no Financeiro também será excluída.\n`:`· Nenhuma saída no Financeiro foi criada por esta compra.\n`)
     +`\nIsso não dá para desfazer.`;
   if(!confirm(aviso))return;
@@ -2183,9 +2189,8 @@ function exportLotes(){
 }
 
 function updateRepTipo(){const p=getProd(document.getElementById('repProd').value);document.getElementById('repTipo').innerHTML=tipoOptions(p);}
-function showRepModal(){if(!DB.produtos.length){showToast('Cadastre um produto primeiro.','err');return;}populateProdSelects();updateRepTipo();document.getElementById('repData').value=today();const cb=document.getElementById('repPagar');if(cb)cb.checked=true;toggleRepPgto();document.getElementById('repModal').style.display='flex';}
+function showRepModal(){if(!DB.produtos.length){showToast('Cadastre um produto primeiro.','err');return;}populateProdSelects();updateRepTipo();document.getElementById('repData').value=today();document.getElementById('repModal').style.display='flex';}
 function showRepModalFor(id){showRepModal();const s=document.getElementById('repProd');if(s){s.value=id;updateRepTipo();}}
-function toggleRepPgto(){const c=document.getElementById('repPagar'),w=document.getElementById('repPgtoWrap');if(w)w.style.display=(c&&c.checked)?'block':'none';}
 function calcRep(){
   const q=parseInt(document.getElementById('repQtd').value)||0;
   const cu=parseFloat(document.getElementById('repCustUnit').value)||0;
@@ -2223,25 +2228,16 @@ async function confReposicao(){
   const validade=(document.getElementById('repValidade')||{}).value||null;
   const nota=(document.getElementById('repNota')||{}).value||'';
   const row={id,prod:p.id,tipo:t,qtd:q,cust_unit:cu,frete,cust_total:total,forn,data,obs,lote:lote.trim(),validade,nota_lote:nota.trim()};
-  const lancarFin=(document.getElementById('repPagar')||{}).checked;
   try{
     await sbPost('reposicoes',row);
     await sbPatch('produtos',p.id,{caixas:p.caixas,frascos:p.frascos,custo_caixa:p.custoCaixa,custo_frasco:p.custoFrasco});
     DB.reposicoes.push(mapRep(row));populateFornecedores();
     await audit('REPOSICAO',`${p.nome} · ${q} ${t==='caixa'?'caixa(s)':'frasco(s)'} · ${forn||'sem fornecedor'} · ${R(total)}`);
-    // Lança também a saída de dinheiro (modo caixa), se marcado
-    if(lancarFin){
-      const sid=id+1,pg=(document.getElementById('repPgto')||{}).value||'pix';
-      const desc=`Compra de estoque — ${p.nome} (${q} ${t==='caixa'?'caixa(s)':'frasco(s)'})`;
-      const sRow={id:sid,tipo:'fornecedor',socio:forn||'Fornecedor',descricao:desc,data,val:total,pgto:pg};
-      try{
-        await sbPost('saidas',sRow);
-        DB.saidas.push({id:sid,tipo:'fornecedor',socio:forn||'Fornecedor',desc,data,val:total,pgto:pg});
-        await audit('FINANCEIRO',`Saída automática da compra — ${desc} — ${R(total)}`);
-      }catch(e2){showToast('Compra salva, mas a saída no Financeiro falhou: '+(e2.message||e2),'warn');}
-    }
+    // A compra NÃO lança saída no Financeiro: quem banca a mercadoria é o Victor, então ela
+    // vira dívida da empresa com ele (aparece em Financeiro → Fornecedores). O reembolso é
+    // lançado à mão como "Pagamento fornecedor" quando acontece.
   }catch(e){hideLoading();showToast('Erro ao salvar a compra — '+(e.message||e),'err');return;}
-  hideLoading();closeModal('repModal');['repCustUnit','repForn','repObs','repLote','repValidade','repNota','repFrete'].forEach(i=>{const e=document.getElementById(i);if(e)e.value='';});populateLotes();renderAll();gp('dash',document.getElementById('nb-dash'));showToast('Compra registrada e já no dashboard!');
+  hideLoading();closeModal('repModal');['repCustUnit','repForn','repObs','repLote','repValidade','repNota','repFrete'].forEach(i=>{const e=document.getElementById(i);if(e)e.value='';});populateLotes();renderAll();showToast('Compra registrada! Ela entrou como dívida da empresa com você.');
 }
 
 // ============================================================
