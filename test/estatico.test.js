@@ -10,6 +10,7 @@
  * ========================================================================== */
 
 const fs = require('fs');
+const path = require('path');
 const H = require('./harness.js');
 
 const ARQUIVO = H.resolverIndex();
@@ -197,11 +198,37 @@ describe('Sobras de desenvolvimento', () => {
 // =============================================================================
 describe('As correcoes de 15/09/2026 continuam no codigo', () => {
 
-  it('confReposicao tira o custo da caixa do valor NAO arredondado', () => {
-    assertInclui(HTML, 'p.custoCaixa=+(novoCustoFrasco*fpcOf(p)).toFixed(2)',
-      'se isto virar custoFrasco*fpc, o custo da caixa volta a dar 582,52');
-    assertNaoInclui(HTML, 'p.custoCaixa=+(p.custoFrasco*fpcOf(p)).toFixed(2)',
-      'esta e a forma bugada');
+  it('o custo medio ponderado saiu do JavaScript (e nao voltou por outra porta)', () => {
+    // Esta checagem era o contrario: exigia a linha `p.custoCaixa=+(novoCustoFrasco*
+    // fpcOf(p)).toFixed(2)` dentro de confReposicao. A conta mudou de casa — vive na
+    // vsp_registrar_compra — entao o que se verifica agora e que ela NAO esta mais aqui.
+    const i = HTML.indexOf('async function confReposicao()');
+    assertMaior(i, 0, 'confReposicao existe');
+    const corpo = HTML.slice(i, HTML.indexOf('\nfunction ', i + 10));
+    assertNaoInclui(corpo, 'p.custoCaixa=', 'o cliente nao escreve mais o custo da caixa');
+    assertNaoInclui(corpo, 'p.custoFrasco=', 'nem o custo do frasco');
+    assertNaoInclui(corpo, 'p.caixas+=', 'nem soma estoque por conta propria');
+    assertNaoInclui(HTML, 'novoCustoFrasco', 'a variavel da conta antiga nao ficou para tras');
+    assertInclui(corpo, "sbRpc('vsp_registrar_compra'", 'a compra e uma RPC so');
+    assertInclui(corpo, 'p_op_id:opId', 'com op_id, que e o que torna o retry seguro');
+  });
+
+  it('a regra do arredondamento continua escrita — agora em SQL', () => {
+    // O bug de 582,52 era derivar o custo da caixa do custo do frasco JA arredondado.
+    // A regra ("cada um arredondado uma vez, os dois a partir do valor nao arredondado")
+    // mudou de arquivo junto com a conta. Se ela desaparecer da migration, o bug volta
+    // — e nenhum teste do harness veria, porque o harness nao roda SQL.
+    const sql = fs.readFileSync(
+      path.join(__dirname, '..', 'migrations', '004_rpc_operacoes.sql'), 'utf8');
+    assertInclui(sql, 'v_cf := round(v_cf_raw, 2);',
+      'o custo do frasco sai do valor nao arredondado');
+    assertInclui(sql, 'v_cc := round(v_cf_raw * v_fpc, 2);',
+      'e o custo da caixa TAMBEM sai do valor nao arredondado');
+    assertNaoInclui(sql, 'round(v_cf * v_fpc',
+      'esta e a forma bugada: multiplicar o frasco ja arredondado');
+    assertNaoInclui(sql, 'v_cc := v_cf * v_fpc', 'e esta e a mesma coisa com outro nome');
+    assertTrue(sql.split('v_cc := round(v_cf_raw * v_fpc, 2);').length - 1 >= 2,
+      'a regra vale nos dois caminhos que recalculam custo (compra e estorno)');
   });
 
   it('estornarCompra mantem a guarda podeRecalcular', () => {
@@ -269,7 +296,6 @@ describe('Higiene geral do arquivo unico', () => {
     // a pasta de trabalho no OneDrive so tem o index.html; a raiz publicada
     // (o repositorio) tem sw.js, manifest.json e icon.svg. O que nao pode
     // existir e meio caminho: index publicado sem o sw/manifest que ele pede.
-    const path = require('path');
     const dir = path.dirname(ARQUIVO);
     const irmaos = ['sw.js', 'manifest.json', 'icon.svg'];
     const presentes = irmaos.filter((f) => fs.existsSync(path.join(dir, f)));

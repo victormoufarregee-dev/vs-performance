@@ -3,9 +3,13 @@
  * financeiro.test.js — o dinheiro. Tudo aqui roda o codigo REAL do index.html.
  * =============================================================================
  * Nada e reimplementado: o teste popula o `DB` do app, chama a funcao de verdade
- * (valorEstTotal, renderFin, dadosFechamento, dadosDRE, confReposicao,
- * estornarCompra) e le o resultado — inclusive lendo os numeros do HTML que o
- * proprio app escreveu, quando a conta so existe dentro de um render.
+ * (valorEstTotal, renderFin, dadosFechamento, dadosDRE) e le o resultado —
+ * inclusive lendo os numeros do HTML que o proprio app escreveu, quando a conta
+ * so existe dentro de um render.
+ *
+ * Estas contas continuam sendo feitas em JavaScript, e por isso continuam aqui.
+ * Venda, compra, cancelamento e estorno NAO: sairam para operacoes.test.js quando
+ * viraram funcoes transacionais no PostgreSQL (ver a nota no meio do arquivo).
  * ========================================================================== */
 
 const H = require('./harness.js');
@@ -39,12 +43,6 @@ function financeiroRenderizado(h) {
   h.escopo.renderFin();
   return { met: h.ui.html('finMet'), forn: h.ui.html('fornBody') };
 }
-
-const CAMPOS_COMPRA = {
-  repProd: 'TG', repTipo: 'caixa', repQtd: '', repCustUnit: '', repForn: 'Victor',
-  repData: '2026-09-15', repObs: '', repFrete: '', repLote: '', repValidade: '',
-  repNota: '',
-};
 
 // =============================================================================
 describe('REGRESSAO da baseline de 15/09/2026 — estes numeros NAO podem mudar', () => {
@@ -163,218 +161,20 @@ describe('REGRESSAO da baseline de 15/09/2026 — estes numeros NAO podem mudar'
 });
 
 // =============================================================================
-describe('Custo medio ponderado — confReposicao (regressao do arredondamento)', () => {
-
-  it('8 caixas a 582,50 com estoque zerado -> custoCaixa 582,50 EXATO', async () => {
-    const h = novo(F.dbEstoqueZero());
-    h.preencher(Object.assign({}, CAMPOS_COMPRA, { repQtd: '8', repCustUnit: '582.50' }));
-    await h.escopo.confReposicao();
-    const p = h.escopo.getProd('TG');
-    assertEqual(p.custoCaixa, 582.50, 'custoCaixa tem de ser 582,50 cravado');
-    assertEqual(p.custoFrasco, 145.63, 'custoFrasco e 145,625 arredondado para 145,63');
-    assertEqual(p.caixas, 8, 'as 8 caixas entraram no estoque');
-  });
-
-  it('o custo da caixa NAO e 582,52 (o bug de multiplicar o frasco arredondado)', async () => {
-    const h = novo(F.dbEstoqueZero());
-    h.preencher(Object.assign({}, CAMPOS_COMPRA, { repQtd: '8', repCustUnit: '582.50' }));
-    await h.escopo.confReposicao();
-    const p = h.escopo.getProd('TG');
-    assertFalse(p.custoCaixa === 582.52,
-      'voltou o bug: custoCaixa saiu de custoFrasco arredondado x fpc');
-    assertClose(p.custoFrasco * p.fpc, 582.52, 'o valor errado seria este', 0.005);
-  });
-
-  it('o valor em estoque bate com o dinheiro gasto: 8 x 582,50 = 4.660,00', async () => {
-    const h = novo(F.dbEstoqueZero());
-    h.preencher(Object.assign({}, CAMPOS_COMPRA, { repQtd: '8', repCustUnit: '582.50' }));
-    await h.escopo.confReposicao();
-    assertClose(h.escopo.valorEstTotal(), 4660.00,
-      'o estoque tem de valer exatamente o que foi pago');
-    const r = h.escopo.DB.reposicoes[0];
-    assertClose(r.custTotal, 4660.00, 'custo total da compra');
-  });
-
-  it('a segunda compra pondera com o estoque que ja existia', async () => {
-    // 2 caixas a 500,00 (8 frascos a 125,00) + 8 caixas a 582,50 (32 frascos)
-    // = 40 frascos por 5.660,00 -> 141,50/frasco e 566,00/caixa
-    const h = novo(F.dbMinimo({
-      produtos: [F.produtoTG({ caixas: 2, frascos: 0, custoCaixa: 500.00, custoFrasco: 125.00 })],
-    }));
-    h.preencher(Object.assign({}, CAMPOS_COMPRA, { repQtd: '8', repCustUnit: '582.50' }));
-    await h.escopo.confReposicao();
-    const p = h.escopo.getProd('TG');
-    assertEqual(p.custoFrasco, 141.50, 'custo medio do frasco');
-    assertEqual(p.custoCaixa, 566.00, 'custo medio da caixa');
-    assertEqual(p.caixas, 10, 'estoque somado');
-    assertClose(h.escopo.valorEstTotal(), 5660.00, '1.000,00 + 4.660,00');
-  });
-
-  it('o frete entra no custo da mercadoria', async () => {
-    const h = novo(F.dbEstoqueZero());
-    h.preencher(Object.assign({}, CAMPOS_COMPRA,
-      { repQtd: '8', repCustUnit: '582.50', repFrete: '100' }));
-    await h.escopo.confReposicao();
-    const p = h.escopo.getProd('TG');
-    assertClose(h.escopo.DB.reposicoes[0].custTotal, 4760.00, 'total com frete');
-    assertClose(p.custoFrasco, 148.75, '4.760,00 / 32 frascos');
-    assertClose(p.custoCaixa, 595.00, '148,75 x 4');
-  });
-
-  it('a compra NAO lanca saida no Financeiro (a mercadoria e divida com Victor)', async () => {
-    const h = novo(F.dbEstoqueZero());
-    h.preencher(Object.assign({}, CAMPOS_COMPRA, { repQtd: '8', repCustUnit: '582.50' }));
-    await h.escopo.confReposicao();
-    assertEqual(h.escopo.DB.saidas.length, 0,
-      'a opcao "ja paguei esta compra" foi removida em 15/09: nada de saida automatica');
-    assertEqual(h.rede.por('POST', '/saidas').length, 0, 'nenhum POST em saidas');
-  });
-
-  it('sem quantidade, custo ou data a compra e bloqueada e o estoque nao muda', async () => {
-    const h = novo(F.dbEstoqueZero());
-    h.preencher(Object.assign({}, CAMPOS_COMPRA, { repQtd: '', repCustUnit: '582.50' }));
-    await h.escopo.confReposicao();
-    assertMatch(h.ui.ultimoToast(), /Preencha quantidade, custo e data/, 'mensagem de bloqueio');
-    assertEqual(h.escopo.DB.reposicoes.length, 0, 'nada foi gravado');
-    assertEqual(h.escopo.getProd('TG').caixas, 0, 'estoque intacto');
-    assertEqual(h.rede.chamadas.length, 0, 'nao chamou a rede');
-  });
-
-  it(
-    'custo digitado com virgula ("582,50") deveria valer 582,50',
-    async () => {
-      const h = novo(F.dbEstoqueZero());
-      h.preencher(Object.assign({}, CAMPOS_COMPRA, { repQtd: '8', repCustUnit: '582,50' }));
-      await h.escopo.confReposicao();
-      assertClose(h.escopo.DB.reposicoes[0].custUnit, 582.50,
-        'o custo unitario digitado com virgula');
-      assertClose(h.escopo.DB.reposicoes[0].custTotal, 4660.00, 'o total da compra');
-      assertEqual(h.escopo.getProd('TG').custoCaixa, 582.50, 'o custo medio da caixa');
-    }
-  );
-});
-
+// COMPRA, VENDA, CANCELAMENTO E ESTORNO mudaram de arquivo.
+//
+// Eram testados aqui enquanto o JavaScript fazia a conta: confReposicao calculava o
+// custo medio ponderado no cliente e estornarCompra desfazia a media na mao. As quatro
+// operacoes passaram a ser UMA chamada a uma funcao transacional no PostgreSQL
+// (vsp_registrar_venda / vsp_registrar_compra / vsp_cancelar_venda / vsp_estornar_compra),
+// e a media ponderada, a baixa de estoque e a auditoria vivem la dentro.
+//
+// O que o harness pode provar sobre elas — funcao chamada, payload, op_id, reuso do op_id
+// no retry, uso do estado canonico devolvido pelo banco, nao-duplicacao — esta em
+// operacoes.test.js. A aritmetica do custo medio e a atomicidade sao testadas em SQL,
+// contra o banco real, em transacao revertida (migrations/APLICADO.md). Nao voltem para
+// ca: um caso de custo medio escrito contra um sbRpc espionado testaria o proprio fixture.
 // =============================================================================
-describe('Estorno de compra — estornarCompra', () => {
-
-  it('caso limpo (sem venda depois): devolve o estoque E o custo medio', async () => {
-    const h = novo(F.dbEstorno('limpo'));
-    h.confirmar(true);
-    await h.escopo.estornarCompra(3000);
-    const p = h.escopo.getProd('TG');
-    assertEqual(p.caixas, 2, 'o estoque voltou de 10 para 2 caixas');
-    assertEqual(p.custoFrasco, 125.00, 'custo do frasco voltou ao de antes da compra');
-    assertEqual(p.custoCaixa, 500.00, 'custo da caixa voltou ao de antes da compra');
-    assertEqual(h.escopo.DB.reposicoes.length, 0, 'a compra saiu do historico');
-    assertClose(h.escopo.valorEstTotal(), 1000.00, 'estoque volta a valer 1.000,00');
-    assertMatch(h.ui.ultimoToast(), /Compra estornada/, 'confirmacao ao usuario');
-    assertEqual(h.rede.por('DELETE', '/reposicoes').length, 1, 'apagou a reposicao no banco');
-  });
-
-  it('o aviso do confirm() avisa que o custo medio vai voltar', async () => {
-    const h = novo(F.dbEstorno('limpo'));
-    h.confirmar(true);
-    await h.escopo.estornarCompra(3000);
-    const aviso = h.ui.confirms[0];
-    assertInclui(aviso, 'Estornar esta compra?', 'cabecalho do aviso');
-    assertInclui(aviso, 'volta de R$ 141.50 para R$ 125.00', 'o aviso mostra o custo novo');
-    assertInclui(aviso, 'Estoque volta de 10 para 2', 'o aviso mostra o estoque');
-  });
-
-  it('REGRESSAO: com venda depois da compra, o custo NAO e zerado nem recalculado', async () => {
-    const h = novo(F.dbEstorno('vendaDepois'));
-    h.confirmar(true);
-    await h.escopo.estornarCompra(3000);
-    const p = h.escopo.getProd('TG');
-    // a subtracao ingenua daria (4.669,50 - 4.660,00) / 1 frasco = 9,50 — o bug
-    // que zerava o custo do produto e travava a venda seguinte
-    assertEqual(p.custoFrasco, 141.50, 'custo do frasco tem de ficar como estava');
-    assertEqual(p.custoCaixa, 566.00, 'custo da caixa tem de ficar como estava');
-    assertFalse(p.custoFrasco === 9.50, 'voltou o bug do custo subtraido as cegas');
-    assertMaior(p.custoFrasco, 0, 'custo zerado trava a venda do produto');
-    assertEqual(p.caixas, 0, 'o estoque de caixas foi devolvido (8 - 8)');
-    assertEqual(p.frascos, 1, 'os frascos nao sao mexidos numa compra de caixas');
-    assertEqual(h.escopo.DB.reposicoes.length, 0, 'a compra saiu do historico');
-  });
-
-  it('e o aviso explica por que o custo nao pode ser recalculado', async () => {
-    const h = novo(F.dbEstorno('vendaDepois'));
-    h.confirmar(true);
-    await h.escopo.estornarCompra(3000);
-    const aviso = h.ui.confirms[0];
-    assertInclui(aviso, 'continua R$ 141.50', 'o aviso diz que o custo fica');
-    assertInclui(aviso, 'houve 1 venda(s)', 'o aviso conta as vendas posteriores');
-  });
-
-  it('venda ANTERIOR a compra nao impede o recalculo', async () => {
-    const h = novo(F.dbEstorno('limpo')); // tem uma venda em 15/08, compra em 02/09
-    assertEqual(h.escopo.DB.vendas.length, 1, 'o fixture tem de ter a venda anterior');
-    h.confirmar(true);
-    await h.escopo.estornarCompra(3000);
-    assertEqual(h.escopo.getProd('TG').custoFrasco, 125.00,
-      'venda antes da compra nao entra na guarda podeRecalcular');
-  });
-
-  it('estoque insuficiente: bloqueia, nao mexe em nada e nem toca a rede', async () => {
-    const h = novo(F.dbEstorno('insuficiente'));
-    h.confirmar(true);
-    await h.escopo.estornarCompra(3000);
-    const p = h.escopo.getProd('TG');
-    assertMatch(h.ui.ultimoToast(), /Não dá para estornar/, 'mensagem de bloqueio');
-    assertInclui(h.ui.ultimoToast(), 'o estoque tem 3 caixa(s) e a compra foi de 8',
-      'a mensagem diz os numeros');
-    assertEqual(p.caixas, 3, 'estoque intacto');
-    assertEqual(p.custoFrasco, 141.50, 'custo intacto');
-    assertEqual(h.escopo.DB.reposicoes.length, 1, 'a compra continua no historico');
-    assertEqual(h.ui.confirms.length, 0, 'nem chegou a perguntar');
-    assertEqual(h.rede.chamadas.length, 0, 'nenhuma chamada de rede');
-  });
-
-  it('se o usuario cancelar o confirm(), nada acontece', async () => {
-    const h = novo(F.dbEstorno('limpo'));
-    h.confirmar(false);
-    await h.escopo.estornarCompra(3000);
-    const p = h.escopo.getProd('TG');
-    assertEqual(h.ui.confirms.length, 1, 'perguntou');
-    assertEqual(p.caixas, 10, 'estoque intacto');
-    assertEqual(p.custoFrasco, 141.50, 'custo intacto');
-    assertEqual(h.escopo.DB.reposicoes.length, 1, 'a compra continua no historico');
-    assertEqual(h.rede.chamadas.length, 0, 'nenhuma chamada de rede');
-  });
-
-  it('compra inexistente: avisa e sai', async () => {
-    const h = novo(F.dbEstorno('limpo'));
-    await h.escopo.estornarCompra(999999);
-    assertMatch(h.ui.ultimoToast(), /Compra não encontrada/, 'mensagem');
-    assertEqual(h.escopo.DB.reposicoes.length, 1, 'nada removido');
-  });
-
-  it('compra de produto que nao existe mais: avisa e sai', async () => {
-    const db = F.dbEstorno('limpo');
-    db.reposicoes[0].prod = 'PRODUTO_QUE_SUMIU';
-    const h = novo(db);
-    await h.escopo.estornarCompra(3000);
-    assertMatch(h.ui.ultimoToast(), /produto desta compra não existe mais/, 'mensagem');
-    assertEqual(h.escopo.DB.reposicoes.length, 1, 'nada removido');
-  });
-
-  it('saida automatica antiga (id = compra+1, mesmo valor) e apagada junto', async () => {
-    // caminho de compatibilidade: compras lancadas antes de 15/09 podiam ter
-    // criado uma saida "ja paguei" com id sequencial
-    const db = F.dbEstorno('limpo');
-    db.saidas = [{
-      id: 3001, tipo: 'fornecedor', socio: 'Victor',
-      desc: 'Compra de estoque (lancada junto)', data: '2026-09-02',
-      val: 4660.00, pgto: 'pix',
-    }];
-    const h = novo(db);
-    h.confirmar(true);
-    await h.escopo.estornarCompra(3000);
-    assertInclui(h.ui.confirms[0], 'saída de R$ 4660.00', 'o aviso menciona a saida');
-    assertEqual(h.escopo.DB.saidas.length, 0, 'a saida automatica foi apagada');
-    assertEqual(h.rede.por('DELETE', '/saidas').length, 1, 'apagou a saida no banco');
-  });
-});
 
 // =============================================================================
 describe('Fechamento por socio x DRE do mesmo mes (item C1)', () => {

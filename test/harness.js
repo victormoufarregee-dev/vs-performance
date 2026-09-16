@@ -28,6 +28,11 @@
  *   - `window`/`self` = o proprio global do contexto; addEventListener e no-op.
  *   - `fetch`: por padrao LANCA (`modo:'proibida'`). Nenhum teste toca a rede.
  *     `rede.fake()` troca por respostas 2xx canned, gravando cada chamada.
+ *   - `espiarRpc(resposta)`: troca a `sbRpc` REAL por um gravador. As quatro
+ *     operacoes criticas (venda, compra, cancelamento, estorno) sao uma chamada
+ *     a uma funcao transacional do PostgreSQL, e o espiao devolve o que o teste
+ *     mandar. Logo, o harness prova a CHAMADA (funcao, payload, op_id, uso da
+ *     resposta) e NAO a conta que o banco faz dentro da transacao.
  *   - `localStorage`: Map em memoria.
  *   - `setTimeout`/`setInterval`: NAO agendam nada. Devolvem um id e registram a
  *     chamada. Logo, nada que dependa de timer (esconder toast, expirar sessao,
@@ -565,6 +570,65 @@ function carregar(opts) {
     confirmar(resposta) {
       estufa.ui.respostaConfirm = resposta !== false;
       return h;
+    },
+
+    /** Foto do estoque/custo de cada produto AGORA (copia, nao referencia). */
+    estoqueAgora() {
+      const db = ler('DB') || {};
+      return (db.produtos || []).map((p) => ({
+        id: p.id, caixas: p.caixas, frascos: p.frascos,
+        custoCaixa: p.custoCaixa, custoFrasco: p.custoFrasco,
+      }));
+    },
+
+    /**
+     * Espiao em sbRpc: troca a funcao REAL por um gravador e devolve o array de
+     * chamadas. Serve para provar a CAMADA DE CHAMADA — qual funcao do banco o app
+     * chama, com que payload, com que op_id, e o que ele faz com a resposta.
+     *
+     * O que essas funcoes executam DENTRO do PostgreSQL (custo medio ponderado,
+     * baixa de estoque com trava, auditoria na mesma transacao, idempotencia de
+     * verdade pelo op_id) NAO e exercitado aqui. Isso e testado em SQL, contra o
+     * banco real, em transacao revertida — ver migrations/APLICADO.md e a secao
+     * "O que esta suite NAO testa" do test/README.md. O espiao responde o que o
+     * teste mandar: ele prova a conversa, nunca a conta.
+     *
+     *   const rpc = h.espiarRpc({ venda: row, produto: prodCanonico });
+     *   const rpc = h.espiarRpc((fn, params, n) => { if (n === 1) throw new Error('x'); return {...}; });
+     *
+     * Cada registro e { fn, params, op, estoque, resposta }, onde `estoque` e a foto
+     * do DB no INSTANTE da chamada — e assim que se prova que o app nao mexeu no
+     * estoque local antes de o banco responder.
+     */
+    espiarRpc(resposta) {
+      const chamadas = [];
+      let real;
+      try { real = ler('sbRpc'); } catch (e) { real = undefined; }
+      if (typeof real !== 'function') {
+        throw new Error(
+          'HARNESS: este index.html nao tem sbRpc() — ele e ANTERIOR a migracao das ' +
+          'quatro operacoes para as funcoes transacionais do PostgreSQL. Nao ha o que ' +
+          'espionar. Aponte VSP_INDEX para a copia migrada (' + arquivo + ' e a atual).'
+        );
+      }
+      chamadas.real = real;
+      chamadas.por = (fn) => chamadas.filter((c) => c.fn === fn);
+      chamadas.ultima = () => (chamadas.length ? chamadas[chamadas.length - 1] : null);
+      chamadas.ops = () => chamadas.map((c) => c.op);
+      escrever('sbRpc', async function (fn, params) {
+        const reg = {
+          fn,
+          params: params || {},
+          op: (params || {}).p_op_id,
+          estoque: h.estoqueAgora(),
+        };
+        chamadas.push(reg);
+        reg.resposta = typeof resposta === 'function'
+          ? await resposta(fn, params, chamadas.length)
+          : resposta;
+        return reg.resposta;
+      });
+      return chamadas;
     },
 
     /**
