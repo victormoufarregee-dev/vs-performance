@@ -71,8 +71,10 @@ create policy vsp_update_ledger_victor on public.ledger_victor for update to aut
 -- ---------------------------------------------------------------------------
 create or replace function public.vsp_saldo_victor() returns numeric
 language sql stable security definer set search_path = public, pg_temp as $fn$
+  -- NAO filtra estornado_em: o par (movimento estornado + linha compensatoria) ja soma
+  -- zero. Filtrar aqui E inserir o compensatorio descontava o valor DUAS vezes.
   select coalesce(sum(case when direcao='debito' then valor else -valor end), 0)
-  from public.ledger_victor where estornado_em is null;
+  from public.ledger_victor;
 $fn$;
 revoke all on function public.vsp_saldo_victor() from public, anon;
 grant execute on function public.vsp_saldo_victor() to authenticated;
@@ -81,7 +83,9 @@ create or replace view public.v_ledger_victor as
 select l.*,
   sum(case when l.direcao='debito' then l.valor else -l.valor end)
     over (order by l.data, l.id rows between unbounded preceding and current row) as saldo_corrido
-from public.ledger_victor l where l.estornado_em is null;
+-- mostra TUDO, inclusive o movimento estornado e o compensatorio: o extrato precisa
+-- explicar o erro e a correcao, e o par soma zero no saldo corrido.
+from public.ledger_victor l;
 grant select on public.v_ledger_victor to authenticated;
 
 -- ---------------------------------------------------------------------------

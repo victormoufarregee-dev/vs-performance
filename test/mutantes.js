@@ -58,13 +58,25 @@ const LEDGER_MOVS =
 const SALDO_VICTOR =
   "function saldoVictor(){return ledgerMovs().reduce((a,m)=>a+(m.direcao==='debito'?m.valor:-m.valor),0);}";
 
+const ADOTA_MOVIMENTO = '  if(res&&res.movimento&&res.movimento.id){';
+const EMPURRA_MOVIMENTO = '      DB.ledger.push(nm);';
+
 const MUTANTES = [
   {
     id: 'M1',
     titulo: 'compra nao cria movimento no razao',
     oQueMuda:
-      'o razao passa a ignorar os movimentos de compra (como se a ' +
-      'vsp_registrar_compra nao tivesse inserido o debito na transacao)',
+      'confReposicao para de adotar o movimento que a vsp_registrar_compra criou na ' +
+      'mesma transacao: a compra entra no estoque e o razao nao registra o debito',
+    arquivo: 'index.html',
+    trocas: [[ADOTA_MOVIMENTO, '  if(false){', 1]],
+  },
+  {
+    id: 'M1b',
+    titulo: 'o razao esquece as compras (variante)',
+    oQueMuda:
+      'ledgerMovs() filtra fora os movimentos de compra — o mesmo efeito visivel de M1, ' +
+      'mas atingindo todo mundo que le o razao, nao so o caminho da compra nova',
     arquivo: 'index.html',
     trocas: [[
       LEDGER_MOVS,
@@ -76,8 +88,21 @@ const MUTANTES = [
     id: 'M2',
     titulo: 'compra cria o movimento duas vezes',
     oQueMuda:
-      'cada compra aparece em dobro no razao (retry sem idempotencia, ' +
-      'ou insert repetido dentro da transacao)',
+      'confReposicao empurra o movimento devolvido DUAS vezes (com ids diferentes, ' +
+      'para escapar da guarda de duplicidade): a divida sobe o dobro da compra',
+    arquivo: 'index.html',
+    trocas: [[
+      EMPURRA_MOVIMENTO,
+      '      DB.ledger.push(nm);DB.ledger.push(Object.assign({},nm,{id:nm.id+1}));',
+      1,
+    ]],
+  },
+  {
+    id: 'M2b',
+    titulo: 'o razao conta cada compra em dobro (variante)',
+    oQueMuda:
+      'ledgerMovs() devolve os movimentos de compra duplicados — o retrato de um ' +
+      'backfill rodado duas vezes sem o indice unico de origem',
     arquivo: 'index.html',
     trocas: [[
       LEDGER_MOVS,

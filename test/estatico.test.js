@@ -286,6 +286,26 @@ describe('O razao da Conta do Victor (migration 006)', () => {
       'identidade deterministica da origem: a mesma compra nao entra duas vezes');
   });
 
+  it(
+    'o saldo do razao nao pode filtrar estornado_em enquanto o estorno insere linha compensatoria',
+    () => {
+      // vsp_ledger_estornar_origem faz DUAS coisas: insere um movimento de sinal
+      // oposto E marca estornado_em no original. Se o saldo tambem ignora quem tem
+      // estornado_em, o valor sai da conta DUAS vezes: uma por exclusao, outra pela
+      // compensacao. Estornar a compra de R$ 4.105,00 levaria o saldo de 5.758,30
+      // para -2.451,70 em vez de 1.653,30 — a tela mostraria que o Victor DEVE a
+      // empresa. O extrato da tela ja assume a versao correta (ledger.test.js, caso
+      // 'o estorno deixa o saldo igual ao de antes do movimento estornado'): o app
+      // soma tudo o que recebe, entao a view precisa entregar as duas linhas.
+      const sql = H.lerMigration('006_ledger_victor.sql');
+      assertInclui(sql, "'estorno',", 'o estorno e por compensacao');
+      assertNaoInclui(sql, 'from public.ledger_victor where estornado_em is null;',
+        'vsp_saldo_victor() nao pode excluir o movimento estornado');
+      assertNaoInclui(sql, 'from public.ledger_victor l where l.estornado_em is null;',
+        'nem a view v_ledger_victor, que e o que o app carrega em DB.ledger');
+    }
+  );
+
   it('quem escreve no razao e a SESSAO, nunca o nome vindo no payload', () => {
     // Esta e a correcao 005 de migrations/APLICADO.md, provada explorando: com o
     // token da Stefany, mandar usuario:'Victor' no payload fazia o banco gravar
