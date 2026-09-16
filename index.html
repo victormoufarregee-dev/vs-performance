@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
@@ -148,7 +148,15 @@ tr.cancelled td{opacity:.55}
 .qr-btn{flex:1;min-width:90px;background:var(--gl);color:var(--gd);border:1px solid #9FE1CB;border-radius:10px;padding:12px 10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
 .qr-btn:hover{background:#cfeee2}
 .venda-actions{display:flex;align-items:center;gap:10px}
-@media(max-width:600px){.fr,.fr3,.fr4{grid-template-columns:1fr}.meta-grid{grid-template-columns:1fr}.topbar{height:auto;padding:.5rem;flex-wrap:wrap}.nav{order:3;width:100%;padding-bottom:.25rem}.content{padding:.875rem}#p-venda input,#p-venda select{font-size:16px;padding:12px 12px}#p-venda .btn{width:100%;justify-content:center;padding:14px;font-size:15px}.venda-actions{position:sticky;bottom:0;background:var(--bg);padding:10px 0;margin:0 -.2rem;z-index:30;box-shadow:0 -4px 12px rgba(0,0,0,.06)}}
+@media(max-width:600px){.fr,.fr3,.fr4{grid-template-columns:1fr}.meta-grid{grid-template-columns:1fr}.topbar{height:auto;padding:.5rem;flex-wrap:wrap}.nav{order:3;width:100%;padding-bottom:.25rem}.content{padding:.875rem}#p-venda input,#p-venda select{font-size:16px;padding:12px 12px}#p-venda .btn{width:100%;justify-content:center;padding:14px;font-size:15px}.venda-actions{position:sticky;bottom:0;background:var(--bg);padding:10px 0 calc(10px + env(safe-area-inset-bottom,0px));margin:0 -.2rem;z-index:30;box-shadow:0 -4px 12px rgba(0,0,0,.06)}
+.nav{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none}
+.nav::-webkit-scrollbar{display:none}
+.nb{padding:11px 13px;font-size:12.5px;flex:0 0 auto}
+input,select,textarea{font-size:16px;padding:11px 12px}
+.btn-d,.btn-cancel,.btn-s{min-height:40px}
+.hlp{width:24px;height:24px;font-size:12px}
+.modal{max-height:calc(88vh - env(safe-area-inset-bottom,0px))}
+.offbar{position:static;top:auto}}
 </style>
 </head>
 <body>
@@ -168,7 +176,7 @@ tr.cancelled td{opacity:.55}
     <div class="ls">Acesso restrito · sistema seguro</div>
     <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:.875rem">
       <div class="fg"><label>E-mail</label><input type="email" id="lu" autocomplete="username" placeholder="seu@email.com"/></div>
-      <div class="fg"><label>Senha</label><input type="password" id="lp" autocomplete="off" placeholder="••••••••"/></div>
+      <div class="fg"><label>Senha</label><input type="password" id="lp" autocomplete="current-password" placeholder="••••••••"/></div>
     </div>
     <div class="err-msg" id="le"></div>
     <button class="btn" style="width:100%;margin-top:.5rem;justify-content:center" onclick="doLogin()"><i class="ti ti-login"></i> Entrar</button>
@@ -273,7 +281,7 @@ tr.cancelled td{opacity:.55}
         <hr class="divider"/>
         <div class="fr3">
           <div class="fg"><label>Qtd</label><input type="number" id="vQtd" value="1" min="1" oninput="calcT()"/></div>
-          <div class="fg"><label>Preço unitário (R$)</label><input type="number" id="vValOrig" placeholder="0,00" oninput="calcT()"/></div>
+          <div class="fg"><label>Preço unitário (R$)</label><input type="text" inputmode="decimal" id="vValOrig" placeholder="0,00" oninput="calcT()"/></div>
           <div class="fg"><label>Forma de pagamento</label><select id="vPgto" onchange="updatePgto()"><option value="pix">Pix</option><option value="credito">Crédito</option><option value="debito">Débito</option><option value="dinheiro">Dinheiro</option><option value="parcelado">Parcelado</option><option value="fiado">Fiado</option></select></div>
         </div>
         <div class="fr3">
@@ -288,7 +296,7 @@ tr.cancelled td{opacity:.55}
           <hr class="divider"/>
           <div class="fr3">
             <div class="fg"><label>Data da venda</label><input type="date" id="vData"/></div>
-            <div class="fg"><label>Desconto unit. (R$)</label><input type="number" id="vDesc" value="0" min="0" oninput="calcT()"/></div>
+            <div class="fg"><label>Desconto unit. (R$)</label><input type="text" inputmode="decimal" id="vDesc" value="0" oninput="calcT()"/></div>
             <div class="fg"><label>Preço final unit.</label><input type="text" id="vVal" readonly style="color:var(--g);font-weight:500"/></div>
           </div>
           <div class="fr3">
@@ -328,7 +336,7 @@ tr.cancelled td{opacity:.55}
           <div class="fg"><label>Data</label><input type="date" id="fData"/></div>
         </div>
         <div class="fr3" style="align-items:flex-end">
-          <div class="fg"><label>Valor (R$)</label><input type="number" id="fVal" placeholder="0,00" step="0.01" min="0"/></div>
+          <div class="fg"><label>Valor (R$)</label><input type="text" inputmode="decimal" id="fVal" placeholder="0,00"/></div>
           <div class="fg"><label>Forma pgto</label><select id="fPgto"><option value="pix">Pix</option><option value="transferencia">Transferência</option><option value="dinheiro">Dinheiro</option><option value="debito">Débito</option></select></div>
           <button class="btn" onclick="regSaida()"><i class="ti ti-plus"></i> Lançar</button>
         </div>
@@ -619,7 +627,7 @@ tr.cancelled td{opacity:.55}
 <!-- MODAIS -->
 <div id="cliModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'cliModal')"><div class="modal"><h3><span id="cliModalTit">Novo cliente</span></h3><input type="hidden" id="cliEditId"/><div class="fr"><div class="fg"><label>Nome completo</label><input type="text" id="cliNome"/></div><div class="fg"><label>WhatsApp</label><input type="text" id="cliTel" placeholder="(11) 99999-9999"/></div></div><div class="fg" style="margin-bottom:1rem"><label>Observação</label><input type="text" id="cliObs"/></div><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn-s" onclick="closeModal('cliModal')">Cancelar</button><button class="btn" onclick="salvarCli()">Salvar</button></div></div></div>
 <div id="entModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'entModal')"><div class="modal"><h3>Ajuste de estoque (sem custo)</h3><div class="fr"><div class="fg"><label>Produto</label><select id="entProd" onchange="updateEntTipo()"></select></div><div class="fg"><label>Tipo</label><select id="entTipo"></select></div></div><div class="fr"><div class="fg"><label>Operação</label><select id="entOp"><option value="add">Adicionar (+)</option><option value="rem">Remover (−)</option></select></div><div class="fg"><label>Quantidade</label><input type="number" id="entQtd" value="1" min="1"/></div></div><div class="fg" style="margin-bottom:.5rem"><label>Motivo *</label><input type="text" id="entMotivo" placeholder="Ex: correção de contagem, perda, devolução"/></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:.5rem"><button class="btn-s" onclick="closeModal('entModal')">Cancelar</button><button class="btn" onclick="confEntrada()">Confirmar ajuste</button></div></div></div>
-<div id="repModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'repModal')"><div class="modal"><h3>Reposição de estoque</h3><div class="fr"><div class="fg"><label>Produto</label><select id="repProd" onchange="updateRepTipo()"></select></div><div class="fg"><label>Tipo</label><select id="repTipo"></select></div></div><div class="fr"><div class="fg"><label>Quantidade</label><input type="number" id="repQtd" value="1" min="1" oninput="calcRep()"/></div><div class="fg"><label>Custo unit. (R$)</label><input type="number" id="repCustUnit" step="0.01" placeholder="0,00" oninput="calcRep()"/></div></div><div class="fr"><div class="fg"><label>Frete / custo extra (R$)</label><input type="number" id="repFrete" step="0.01" placeholder="0,00" value="0" oninput="calcRep()"/></div><div class="fg"><label>Data</label><input type="date" id="repData"/></div></div><div class="fr"><div class="fg"><label>Custo total da compra</label><input type="text" id="repCustTot" readonly style="font-weight:500"/></div><div class="fg"><label>Custo real por unidade</label><input type="text" id="repCustReal" readonly style="font-weight:500;color:var(--g)"/></div></div><div class="fr"><div class="fg"><label>Fornecedor</label><input type="text" id="repForn" list="fornecedoresList" placeholder="Victor, Hassan ou novo"/></div><div class="fg"><label>Observação</label><input type="text" id="repObs"/></div></div>
+<div id="repModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'repModal')"><div class="modal"><h3>Reposição de estoque</h3><div class="fr"><div class="fg"><label>Produto</label><select id="repProd" onchange="updateRepTipo()"></select></div><div class="fg"><label>Tipo</label><select id="repTipo"></select></div></div><div class="fr"><div class="fg"><label>Quantidade</label><input type="number" id="repQtd" value="1" min="1" oninput="calcRep()"/></div><div class="fg"><label>Custo unit. (R$)</label><input type="text" inputmode="decimal" id="repCustUnit" placeholder="0,00" oninput="calcRep()"/></div></div><div class="fr"><div class="fg"><label>Frete / custo extra (R$)</label><input type="text" inputmode="decimal" id="repFrete" placeholder="0,00" value="0" oninput="calcRep()"/></div><div class="fg"><label>Data</label><input type="date" id="repData"/></div></div><div class="fr"><div class="fg"><label>Custo total da compra</label><input type="text" id="repCustTot" readonly style="font-weight:500"/></div><div class="fg"><label>Custo real por unidade</label><input type="text" id="repCustReal" readonly style="font-weight:500;color:var(--g)"/></div></div><div class="fr"><div class="fg"><label>Fornecedor</label><input type="text" id="repForn" list="fornecedoresList" placeholder="Victor, Hassan ou novo"/></div><div class="fg"><label>Observação</label><input type="text" id="repObs"/></div></div>
 <div style="background:var(--secondary-bg);border-radius:8px;padding:10px 12px;margin-bottom:.75rem">
   <p style="font-size:12px;font-weight:600;margin-bottom:8px"><i class="ti ti-clipboard-list"></i> Lote e validade <span style="font-weight:400;color:var(--sub)">(opcional, mas recomendado)</span></p>
   <div class="fr" style="margin-bottom:8px">
@@ -629,7 +637,7 @@ tr.cancelled td{opacity:.55}
   <div class="fg" style="margin:0"><label>Anota&ccedil;&otilde;es deste lote (campo livre)</label><textarea id="repNota" placeholder="Escreva o que quiser: fabricante, temperatura de transporte, aspecto do produto, n&uacute;mero da nota, quem entregou..." style="resize:vertical;height:64px;font-size:12px"></textarea></div>
   <p style="font-size:10px;color:var(--sub);margin-top:6px">O app avisa sozinho quando a validade estiver chegando. D&aacute; para preencher depois, em Estoque &rarr; Lotes e validade.</p>
 </div><div style="background:var(--secondary-bg);border-radius:8px;padding:10px 12px;margin-bottom:.75rem"><p style="font-size:12px;margin:0;line-height:1.5"><strong>Esta compra n&atilde;o lan&ccedil;a sa&iacute;da no Financeiro.</strong></p><p style="font-size:10px;color:var(--sub);margin:6px 0 0;line-height:1.5">Quem banca a mercadoria &eacute; o V&iacute;ctor, ent&atilde;o a compra vira <strong>d&iacute;vida da empresa com ele</strong> &mdash; e aparece em Financeiro &rarr; Fornecedores. Quando a empresa te reembolsar, lance l&agrave; como <em>Pagamento fornecedor</em>.</p></div><p style="font-size:11px;color:var(--sub);margin-bottom:.75rem">O custo informado aqui atualiza automaticamente o custo m&eacute;dio do produto.</p><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn-s" onclick="closeModal('repModal')">Cancelar</button><button class="btn" onclick="confReposicao()">Confirmar compra</button></div></div></div>
-<div id="prodModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'prodModal')"><div class="modal"><h3><span id="prodModalTit">Novo produto</span></h3><input type="hidden" id="prodEditId"/><div class="fg" style="margin-bottom:10px"><label>Nome do produto *</label><input type="text" id="prodNome" placeholder="Ex: Retatrutide Verde"/></div><div class="fr"><div class="fg"><label>Como é vendido</label><select id="prodVende" onchange="updateProdForm()"><option value="caixa">Só em caixa</option><option value="ambos">Caixa e frasco (fracionado)</option></select></div><div class="fg" id="prodFpcWrap" style="display:none"><label>Frascos por caixa</label><input type="number" id="prodFpc" value="4" min="1" oninput="updateProdForm()"/></div></div><div class="fr"><div class="fg"><label>Custo da caixa (R$) *</label><input type="number" id="prodCustoCaixa" step="0.01" placeholder="0,00" oninput="updateProdForm()"/></div><div class="fg" id="prodCustoFrascoWrap" style="display:none"><label>Custo do frasco (R$)</label><input type="number" id="prodCustoFrasco" step="0.01" readonly/></div></div><div class="fr"><div class="fg"><label>Preço padrão de venda (R$)</label><input type="number" id="prodPreco" step="0.01" placeholder="0,00"/></div><div class="fg"><label>Estoque mínimo (caixas)</label><input type="number" id="prodMin" value="4" min="0"/></div></div><div class="fr"><div class="fg"><label>Estoque crítico (caixas)</label><input type="number" id="prodCrit" value="2" min="0"/></div><div class="fg"></div></div><p style="font-size:11px;color:var(--sub);margin-bottom:1rem">O custo do frasco é calculado automaticamente. O preço padrão já vem preenchido na venda (você pode mudar). Os limites definem o status do estoque (Bom/Baixo/Crítico).</p><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn-s" onclick="closeModal('prodModal')">Cancelar</button><button class="btn" onclick="salvarProduto()">Salvar</button></div></div></div>
+<div id="prodModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'prodModal')"><div class="modal"><h3><span id="prodModalTit">Novo produto</span></h3><input type="hidden" id="prodEditId"/><div class="fg" style="margin-bottom:10px"><label>Nome do produto *</label><input type="text" id="prodNome" placeholder="Ex: Retatrutide Verde"/></div><div class="fr"><div class="fg"><label>Como é vendido</label><select id="prodVende" onchange="updateProdForm()"><option value="caixa">Só em caixa</option><option value="ambos">Caixa e frasco (fracionado)</option></select></div><div class="fg" id="prodFpcWrap" style="display:none"><label>Frascos por caixa</label><input type="number" id="prodFpc" value="4" min="1" oninput="updateProdForm()"/></div></div><div class="fr"><div class="fg"><label>Custo da caixa (R$) *</label><input type="text" inputmode="decimal" id="prodCustoCaixa" placeholder="0,00" oninput="updateProdForm()"/></div><div class="fg" id="prodCustoFrascoWrap" style="display:none"><label>Custo do frasco (R$)</label><input type="text" inputmode="decimal" id="prodCustoFrasco" readonly/></div></div><div class="fr"><div class="fg"><label>Preço padrão de venda (R$)</label><input type="text" inputmode="decimal" id="prodPreco" placeholder="0,00"/></div><div class="fg"><label>Estoque mínimo (caixas)</label><input type="number" id="prodMin" value="4" min="0"/></div></div><div class="fr"><div class="fg"><label>Estoque crítico (caixas)</label><input type="number" id="prodCrit" value="2" min="0"/></div><div class="fg"></div></div><p style="font-size:11px;color:var(--sub);margin-bottom:1rem">O custo do frasco é calculado automaticamente. O preço padrão já vem preenchido na venda (você pode mudar). Os limites definem o status do estoque (Bom/Baixo/Crítico).</p><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn-s" onclick="closeModal('prodModal')">Cancelar</button><button class="btn" onclick="salvarProduto()">Salvar</button></div></div></div>
 <div id="cliDetModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'cliDetModal')"><div class="modal" style="max-width:520px"><h3 id="cliDetNome"></h3><div id="cliDetBody"></div><div style="display:flex;justify-content:flex-end;margin-top:1rem"><button class="btn-s" onclick="closeModal('cliDetModal')">Fechar</button></div></div></div>
 <div id="quitarModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'quitarModal')"><div class="modal"><h3>Quitar dívida</h3><input type="hidden" id="qVendaId"/><p style="font-size:13px;margin-bottom:1rem" id="qInfo"></p><div class="fg" style="margin-bottom:1rem"><label>Forma recebida</label><select id="qPgto"><option value="pix">Pix</option><option value="credito">Crédito</option><option value="debito">Débito</option><option value="dinheiro">Dinheiro</option></select></div><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn-s" onclick="closeModal('quitarModal')">Cancelar</button><button class="btn" onclick="confirmarQuitar()">Confirmar</button></div></div></div>
 <div id="cancelModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'cancelModal')"><div class="modal"><h3 style="color:var(--r)"><i class="ti ti-ban"></i> Cancelar venda</h3><input type="hidden" id="cancelVendaId"/><div id="cancelInfo" style="background:var(--secondary-bg);border-radius:8px;padding:10px 12px;font-size:12px;margin-bottom:1rem;line-height:1.7"></div><div class="fg" style="margin-bottom:1rem"><label>Motivo *</label><select id="cancelMotivo" style="margin-bottom:8px"><option value="">Selecione...</option><option value="Erro no lançamento">Erro no lançamento</option><option value="Cliente desistiu">Cliente desistiu</option><option value="Produto devolvido">Produto devolvido</option><option value="Duplicata acidental">Duplicata acidental</option><option value="Troca de forma de pagamento">Troca de forma de pagamento</option><option value="Outro">Outro</option></select><textarea id="cancelObs" placeholder="Detalhes (opcional)" style="resize:none;height:70px;font-size:12px"></textarea></div><div style="background:#FEEFEF;border:1px solid #F7C1C1;border-radius:8px;padding:8px 12px;font-size:11px;color:#7B1F1F;margin-bottom:1rem">⚠ Estoque restaurado automaticamente. Cancelamento registrado permanentemente.</div><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn-s" onclick="closeModal('cancelModal')">Voltar</button><button style="background:var(--r);color:#fff;border:none;padding:9px 18px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit" onclick="confirmarCancelamento()"><i class="ti ti-ban"></i> Confirmar cancelamento</button></div></div></div>
@@ -833,6 +841,23 @@ function janelaMedia(){return cfgNum('janela_media',30);}      // janela para ca
 function setToday(){['vData','fData','repData'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=today();});}
 function fmtD(s){if(!s)return '';const[y,m,d]=s.split('-');return`${d}/${m}/${y}`;}
 function R(v){return'R$ '+Number(v||0).toFixed(2);}
+// Números em pt-BR: aceita "150,00", "150.00", "1.250,50" e "1250". Campos de dinheiro são
+// type="text" inputmode="decimal" justamente porque type="number" DESCARTA a vírgula: quem
+// digitava 150,00 ficava com o campo vazio e recebia "preencha os campos obrigatórios".
+function numBR(v){
+  if(typeof v==='number')return isFinite(v)?v:0;
+  let s=String(v==null?'':v).trim();if(!s)return 0;
+  s=s.replace(/[^\d.,-]/g,'');
+  const vir=s.lastIndexOf(','),pon=s.lastIndexOf('.');
+  if(vir>-1&&pon>-1){ // o separador decimal é o que vier por último
+    s=(vir>pon)?s.replace(/\./g,'').replace(',','.'):s.replace(/,/g,'');
+  }else if(vir>-1){
+    s=(s.length-vir-1===3&&s.split(',').length===2&&/^\d{1,3},\d{3}$/.test(s))?s.replace(',',''):s.replace(',','.');
+  }
+  const n=parseFloat(s);return isFinite(n)?n:0;
+}
+// Lê um campo de dinheiro pelo id, já normalizado.
+function valNum(id){const e=document.getElementById(id);return e?numBR(e.value):0;}
 function calcMarg(l,c){return c?((l-c)/c)*100:0;}
 function margemPct(bruto,lucro){return bruto?(lucro/bruto*100):0;} // margem sobre a venda (% do valor vendido)
 function mPill(p){const cl=p>=40?'mp-green':p>=20?'mp-amber':'mp-red';return`<span class="${cl}">${Number(p||0).toFixed(1)}%</span>`;}
@@ -991,7 +1016,7 @@ const AJUDA={
        <p class="obs">A <strong>data limite de compra</strong> desconta os ${leadTime()} dias que o fornecedor demora para entregar (ajust&aacute;vel em Config). A sugest&atilde;o de quantidade cobre ${coberturaAlvo()} dias.</p>`}),
   fechamento:()=>({t:'Fechamento por s&oacute;cio',
     c:`<p>"Vendeu" mostra o que cada um registrou. "Cabe a ele(a)" divide o <strong>resultado do m&ecirc;s</strong> pela porcentagem combinada.</p>
-       <p class="ex">Conta do resultado: lucro das vendas &minus; fornecedor, despesas e impostos. Pr&oacute;-labore e retiradas n&atilde;o entram como custo, porque s&atilde;o justamente o que est&aacute; sendo dividido.</p>
+       <p class="ex">Conta do resultado: lucro das vendas &minus; despesas, impostos e outros. Pr&oacute;-labore e retiradas n&atilde;o entram como custo, porque s&atilde;o justamente o que est&aacute; sendo dividido. <strong>Pagamento de fornecedor tamb&eacute;m n&atilde;o entra</strong>: ele &eacute; o reembolso da mercadoria, cujo custo j&aacute; foi descontado no lucro de cada venda &mdash; cont&aacute;-lo aqui subtrairia o mesmo custo duas vezes. &Eacute; a mesma regra do DRE.</p>
        <p class="obs">Saldo verde = ainda tem a receber. Vermelho = retirou mais do que lhe cabia at&eacute; agora.</p>`}),
   abc:()=>({t:'Curva ABC de clientes',
     c:`<p>Ordena os clientes por lucro gerado e separa em tr&ecirc;s grupos.</p>
@@ -1376,8 +1401,8 @@ function boxFaixaPreco(){
   if(!p){el.innerHTML='';return;}
   const h=historicoPrecos(p.id,t);
   const cu=t==='caixa'?p.custoCaixa:p.custoFrasco;
-  const atual=parseFloat(document.getElementById('vValOrig').value)||0;
-  const desc=parseFloat((document.getElementById('vDesc')||{}).value)||0;
+  const atual=valNum('vValOrig')||0;
+  const desc=valNum('vDesc')||0;
   const final=Math.max(0,atual-desc);
   let txt='';
   if(h)txt+=`<span>Voc&ecirc; costuma vender ${tipoLabel(t).toLowerCase()} de ${p.nome} entre <strong>${R(h.min)}</strong> e <strong>${R(h.max)}</strong> · m&eacute;dia <strong>${R(h.media)}</strong> (${h.n} venda(s)) · &uacute;ltima ${R(h.ultimo)}</span>`;
@@ -1447,7 +1472,7 @@ function updatePgto(){const v=document.getElementById('vPgto').value;document.ge
 function toggleAdv(){const a=document.getElementById('vAdvanced'),b=document.getElementById('advBtn');const sh=a.style.display==='none';a.style.display=sh?'block':'none';b.innerHTML=sh?'<i class="ti ti-adjustments-horizontal"></i> Menos opções':'<i class="ti ti-adjustments-horizontal"></i> Mais opções (desconto, taxa, parcelas, data)';}
 function vendaRapida(prodId,tipo){const p=getProd(prodId);if(!p){showToast('Cadastre o produto primeiro.','err');return;}document.getElementById('vProd').value=prodId;updateVF();if(tipo==='frasco'&&p.vendeFrasco){document.getElementById('vTipo').value='frasco';updateVF();}const q=document.getElementById('vQtd');if(q){q.focus();}showToast(p.nome+' '+tipoLabel(document.getElementById('vTipo').value)+' selecionado ✓');}
 function calcT(){
-  const p=getProd(document.getElementById('vProd').value),t=document.getElementById('vTipo').value,q=parseFloat(document.getElementById('vQtd').value)||0,vo=parseFloat(document.getElementById('vValOrig').value)||0,dc=parseFloat(document.getElementById('vDesc').value)||0,vf=Math.max(0,vo-dc),tx=parseFloat(document.getElementById('vTaxa').value)||0,qm=document.getElementById('vTaxaQuem').value;
+  const p=getProd(document.getElementById('vProd').value),t=document.getElementById('vTipo').value,q=parseFloat(document.getElementById('vQtd').value)||0,vo=valNum('vValOrig')||0,dc=valNum('vDesc')||0,vf=Math.max(0,vo-dc),tx=parseFloat(document.getElementById('vTaxa').value)||0,qm=document.getElementById('vTaxaQuem').value;
   const b=q*vf,c=p?cuProd(p,t,q):0,tv=b*(tx/100),l=qm==='nos'?b-tv:b,mg=margemPct(b,l-c);
   document.getElementById('vVal').value=vo?R(vf):'';document.getElementById('vTot').value=b?R(b):'';document.getElementById('vCustoTot').value=q?R(c):'';document.getElementById('vTaxaVal').value=R(tv);document.getElementById('vLiq').value=b?R(l):'';
   const mp=document.getElementById('vMargem');if(b&&c){mp.value=mg.toFixed(1)+'%';mp.style.color=mg>=40?'var(--g)':mg>=20?'var(--am)':'var(--r)';}else{mp.value='';mp.style.color='';}
@@ -1457,20 +1482,34 @@ function calcT(){
 async function regVenda(){
   const p=getProd(document.getElementById('vProd').value);
   if(!p){showToast('Selecione um produto.','err');return;}
-  const t=document.getElementById('vTipo').value,q=parseInt(document.getElementById('vQtd').value)||0,vo=parseFloat(document.getElementById('vValOrig').value)||0,dc=parseFloat(document.getElementById('vDesc').value)||0,vf=Math.max(0,vo-dc),dt=document.getElementById('vData').value,obs=document.getElementById('vObs').value.trim(),pg=document.getElementById('vPgto').value,pa=pg==='parcelado'?parseInt(document.getElementById('vParcelas').value):null,tx=pg==='fiado'?0:(parseFloat(document.getElementById('vTaxa').value)||0),tq=document.getElementById('vTaxaQuem').value;
-  let ci=document.getElementById('vCliSel').value,cn='',cw='';
-  if(!ci){cn=document.getElementById('vCliNome').value.trim();cw=document.getElementById('vCliWpp').value.trim();if(!cn||!cw){showToast('Informe nome e WhatsApp.','err');return;}
-    showLoading('Cadastrando cliente...');
-    try{const nc=await sbPost('clientes',{id:Date.now(),nome:cn,tel:cw,obs:''});if(Array.isArray(nc)&&nc[0]){DB.clientes.push(nc[0]);ci=nc[0].id;}else{ci=Date.now();DB.clientes.push({id:ci,nome:cn,tel:cw,obs:''});}}
-    catch(e){ci=Date.now();DB.clientes.push({id:ci,nome:cn,tel:cw,obs:''});}
-    populateCliSelect();hideLoading();
-  }else{const c=DB.clientes.find(x=>x.id==ci);if(c){cn=c.nome;cw=c.tel;}}
-  if(!q||!vo||!dt){showToast('Preencha todos os campos obrigatórios.','err');return;}
+  const t=document.getElementById('vTipo').value,q=parseInt(document.getElementById('vQtd').value)||0,vo=valNum('vValOrig')||0,dc=valNum('vDesc')||0,vf=Math.max(0,vo-dc),dt=document.getElementById('vData').value,obs=document.getElementById('vObs').value.trim(),pg=document.getElementById('vPgto').value,pa=pg==='parcelado'?parseInt(document.getElementById('vParcelas').value):null,tx=pg==='fiado'?0:(parseFloat(document.getElementById('vTaxa').value)||0),tq=document.getElementById('vTaxaQuem').value;
+  // C6 — TODA validação acontece ANTES de criar o cliente. Antes, um preço inválido gravava
+  // o cliente e abortava a venda; ao tentar de novo nascia um cliente duplicado.
+  if(!q||!vo||!dt){
+    const falta=[];if(!q)falta.push('quantidade');if(!vo)falta.push('preço unitário');if(!dt)falta.push('data');
+    showToast('Falta preencher: '+falta.join(', ')+'.','err');return;
+  }
   const cuUnit=t==='caixa'?p.custoCaixa:p.custoFrasco;
   if(!cuUnit||cuUnit<=0){showToast('Cadastre o custo de '+p.nome+' antes de vender (Produtos → Editar).','err');return;}
-  // estoque
-  if(t==='caixa'){if(p.caixas<q){showToast('Estoque insuficiente.','err');return;}p.caixas-=q;}
-  else{const tf=totFP(p);if(tf<q){showToast('Estoque insuficiente.','err');return;}let r=q;if(p.frascos>=r)p.frascos-=r;else{r-=p.frascos;p.frascos=0;const cx=Math.ceil(r/fpcOf(p));p.caixas-=cx;p.frascos=cx*fpcOf(p)-r;}}
+  if(t==='caixa'){if(p.caixas<q){showToast('Estoque insuficiente.','err');return;}}
+  else if(totFP(p)<q){showToast('Estoque insuficiente.','err');return;}
+  let ci=document.getElementById('vCliSel').value,cn='',cw='';
+  if(!ci){cn=document.getElementById('vCliNome').value.trim();cw=document.getElementById('vCliWpp').value.trim();if(!cn||!cw){showToast('Informe nome e WhatsApp.','err');return;}
+    // Cliente já cadastrado com o mesmo WhatsApp? Reaproveita em vez de duplicar.
+    const soDig=s=>String(s||'').replace(/\D/g,'');
+    const jaTem=DB.clientes.find(x=>soDig(x.tel)&&soDig(x.tel)===soDig(cw));
+    if(jaTem){ci=jaTem.id;cn=jaTem.nome;cw=jaTem.tel;showToast('Este WhatsApp já é do cliente '+jaTem.nome+' — usei o cadastro dele.','warn');}
+    else{
+      showLoading('Cadastrando cliente...');
+      try{const nc=await sbPost('clientes',{id:Date.now(),nome:cn,tel:cw,obs:''});if(Array.isArray(nc)&&nc[0]){DB.clientes.push(nc[0]);ci=nc[0].id;}else{ci=Date.now();DB.clientes.push({id:ci,nome:cn,tel:cw,obs:''});}}
+      catch(e){hideLoading();showToast('Não consegui cadastrar o cliente. A venda NÃO foi lançada — confira a internet e tente de novo.','err');return;}
+      populateCliSelect();hideLoading();
+    }
+  }else{const c=DB.clientes.find(x=>x.id==ci);if(c){cn=c.nome;cw=c.tel;}}
+  // C7 — guarda o estoque antes de mexer, para conseguir desfazer se a gravação falhar.
+  const estAntes={caixas:p.caixas,frascos:p.frascos};
+  if(t==='caixa'){p.caixas-=q;}
+  else{let r=q;if(p.frascos>=r)p.frascos-=r;else{r-=p.frascos;p.frascos=0;const cx=Math.ceil(r/fpcOf(p));p.caixas-=cx;p.frascos=cx*fpcOf(p)-r;}}
   const b=q*vf,c=cuProd(p,t,q),tv=b*(tx/100),l=tq==='nos'?b-tv:b,ll=pg==='fiado'?0:l-c,mg=pg==='fiado'?0:margemPct(b,ll);
   const id=Date.now();
   const row={id,prod:p.id,tipo:t,qtd:q,val_orig:vo,desconto:dc,val_final:vf,bruto:b,custo:c,taxa:tx,taxa_val:tv,taxa_quem:tq,liq:l,lucro_liq:ll,margem:mg,cliente:cn,wpp:cw,cli_id:ci,data:dt,obs,pgto:pg,parcelas:pa,quitado:false,cancelada:false,vence_em:(pg==='fiado'?((document.getElementById('vVence')||{}).value||addDias(dt,15)):null),usuario:currentUser,lote:(document.getElementById('vLote')?document.getElementById('vLote').value.trim():'')};
@@ -1480,7 +1519,16 @@ async function regVenda(){
     await sbPatch('produtos',p.id,{caixas:p.caixas,frascos:p.frascos});
     DB.vendas.push(mapVenda(row));
     await audit('VENDA',`${prodNome(p.id)} · ${cn} · ${tipoLabel(t)} x${q} · ${R(b)} · ${pg}`);
-  }catch(e){hideLoading();showToast('Erro ao salvar venda. Tente novamente.','err');return;}
+  }catch(e){
+    // C7 — desfaz o estoque em memória, senão a tela passa a mostrar um número que o banco não tem
+    // e a próxima venda grava esse erro na nuvem de forma definitiva.
+    p.caixas=estAntes.caixas;p.frascos=estAntes.frascos;
+    hideLoading();renderAll();
+    // C3 — NÃO mandar "tente novamente": a venda pode ter sido gravada e a retentativa duplicaria.
+    showToast('A venda PODE ter sido salva. Toque em 🔄 e confira no Histórico ANTES de lançar de novo.','err');
+    try{await sincronizar();}catch(e2){}
+    return;
+  }
   hideLoading();
   showToast(pg==='fiado'?'Venda fiado registrada!':'Venda registrada!');
   document.getElementById('vCliSel').value='';document.getElementById('vCliNome').value='';document.getElementById('vCliWpp').value='';document.getElementById('newCliBox').style.display='block';document.getElementById('vObs').value='';document.getElementById('vQtd').value='1';document.getElementById('vValOrig').value='';document.getElementById('vDesc').value='0';document.getElementById('vTaxa').value='0';document.getElementById('vPgto').value='pix';document.getElementById('fiadoInfo').style.display='none';
@@ -1506,13 +1554,36 @@ async function confirmarCancelamento(){
   const motivoFinal=motivo+(obs?' — '+obs:'');const{display}=getNow();
   showLoading('Cancelando venda...');
   const p=getProd(v.prod);
-  if(p){if(v.tipo==='caixa')p.caixas+=v.qtd;else{p.frascos+=v.qtd;const cx=Math.floor(p.frascos/fpcOf(p));p.caixas+=cx;p.frascos=p.frascos%fpcOf(p);}}
+  const estAntes=p?{caixas:p.caixas,frascos:p.frascos,custoCaixa:p.custoCaixa,custoFrasco:p.custoFrasco}:null;
+  if(p){
+    // M5 — a mercadoria volta pelo custo que ELA tinha na venda (v.custo), não pelo custo médio
+    // de hoje. Se o custo médio subiu desde então, devolver pelo valor atual criava dinheiro do
+    // nada: inflava o estoque e a dívida com o Victor. Aqui a conta fica exatamente neutra —
+    // o custo já vendido cai v.custo e o valor do estoque sobe v.custo.
+    const unAntes=totFP(p),valAntes=valorEstProd(p);
+    const unVolta=(v.tipo==='caixa')?v.qtd*fpcOf(p):v.qtd;
+    const valVolta=+v.custo||0;
+    if(v.tipo==='caixa')p.caixas+=v.qtd;
+    else{p.frascos+=v.qtd;const cx=Math.floor(p.frascos/fpcOf(p));p.caixas+=cx;p.frascos=p.frascos%fpcOf(p);}
+    const unDepois=unAntes+unVolta;
+    if(unDepois>0&&valVolta>0){
+      const raw=(valAntes+valVolta)/unDepois;
+      p.custoFrasco=+raw.toFixed(2);
+      p.custoCaixa=+(raw*fpcOf(p)).toFixed(2);
+    }
+  }
   try{
     await sbPatch('vendas',id,{cancelada:true,cancelada_por:currentUser,cancelada_em:display,cancelada_motivo:motivoFinal});
-    if(p)await sbPatch('produtos',p.id,{caixas:p.caixas,frascos:p.frascos});
+    if(p)await sbPatch('produtos',p.id,{caixas:p.caixas,frascos:p.frascos,custo_caixa:p.custoCaixa,custo_frasco:p.custoFrasco});
     v.cancelada=true;v.canceladaPor=currentUser;v.canceladaEm=display;v.canceladaMotivo=motivoFinal;
     await audit('CANCELAMENTO',`Venda de ${v.cliente} (${R(v.bruto)}) cancelada — Motivo: ${motivoFinal}`);
-  }catch(e){hideLoading();showToast('Erro ao cancelar. Tente novamente.','err');return;}
+  }catch(e){
+    if(p&&estAntes){p.caixas=estAntes.caixas;p.frascos=estAntes.frascos;p.custoCaixa=estAntes.custoCaixa;p.custoFrasco=estAntes.custoFrasco;}
+    hideLoading();renderAll();
+    showToast('O cancelamento PODE ter sido salvo. Toque em 🔄 e confira antes de tentar de novo.','err');
+    try{await sincronizar();}catch(e2){}
+    return;
+  }
   hideLoading();closeModal('cancelModal');renderAll();showToast('Venda cancelada. Estoque restaurado.','warn');
 }
 function renderCancelamentos(){
@@ -1629,7 +1700,7 @@ function updateFTipo(){const t=document.getElementById('fTipo').value;document.g
 function listaFornecedores(){const set=new Set(['Victor','Hassan']);DB.reposicoes.forEach(r=>{if(r.forn)set.add(r.forn);});DB.saidas.forEach(s=>{if(s.tipo==='fornecedor'&&s.socio)set.add(s.socio);});return[...set];}
 function populateFornecedores(){const dl=document.getElementById('fornecedoresList');if(dl)dl.innerHTML=listaFornecedores().map(f=>`<option value="${f}"></option>`).join('');}
 async function regSaida(){
-  const tipo=document.getElementById('fTipo').value,socio=tipo==='fornecedor'?document.getElementById('fForn').value.trim():document.getElementById('fSocio').value,desc=document.getElementById('fDesc').value.trim(),data=document.getElementById('fData').value,val=parseFloat(document.getElementById('fVal').value)||0,pgto=document.getElementById('fPgto').value;
+  const tipo=document.getElementById('fTipo').value,socio=tipo==='fornecedor'?document.getElementById('fForn').value.trim():document.getElementById('fSocio').value,desc=document.getElementById('fDesc').value.trim(),data=document.getElementById('fData').value,val=valNum('fVal')||0,pgto=document.getElementById('fPgto').value;
   if(!desc||!val||!data){showToast('Preencha descrição, valor e data.','err');return;}
   if(tipo==='fornecedor'&&!socio){showToast('Informe o fornecedor.','err');return;}
   showLoading('Salvando...');
@@ -1653,12 +1724,21 @@ function dadosFechamento(mes){
   const lucroTotal=vend.reduce((a,v)=>a+(+v.lucroLiq||0),0);
   const brutoTotal=vend.reduce((a,v)=>a+(+v.bruto||0),0);
   const recebTotal=vend.filter(v=>v.pgto!=='fiado'||v.quitado).reduce((a,v)=>a+(+v.liq||0),0);
-  const custosTotal=said.filter(x=>x.tipo==='fornecedor'||x.tipo==='despesa'||x.tipo==='imposto'||x.tipo==='outros').reduce((a,x)=>a+(+x.val||0),0);
+  // C1 — O pagamento ao fornecedor NÃO é despesa do mês: é reembolso de mercadoria cujo custo
+  // já saiu do lucro de cada venda (lucroLiq = líquido − custo). Contar aqui de novo subtraía o
+  // mesmo custo duas vezes e derrubava o resultado a dividir. É a mesma regra que o DRE já usa.
+  const reembolsoForn=said.filter(x=>x.tipo==='fornecedor').reduce((a,x)=>a+(+x.val||0),0);
+  const custosTotal=said.filter(x=>x.tipo==='despesa'||x.tipo==='imposto'||x.tipo==='outros').reduce((a,x)=>a+(+x.val||0),0);
+  const spV0=(DB.config&&DB.config.split_victor!=null)?+DB.config.split_victor:50;
+  const spS0=(DB.config&&DB.config.split_stefany!=null)?+DB.config.split_stefany:50;
+  const pctDe={Victor:spV0,Stefany:spS0};
   const semDono=vend.filter(v=>!v.usuario);
+  const totalAmbos=said.filter(x=>(x.tipo==='prolabore'||x.tipo==='retirada')&&x.socio==='Ambos').reduce((a,x)=>a+(+x.val||0),0);
   const porSocio=SOCIOS.map(nome=>{
     const vs=vend.filter(v=>v.usuario===nome);
     const retiradas=said.filter(x=>(x.tipo==='prolabore'||x.tipo==='retirada')&&(x.socio===nome?1:0)).reduce((a,x)=>a+(+x.val||0),0);
-    const metadeAmbos=said.filter(x=>(x.tipo==='prolabore'||x.tipo==='retirada')&&x.socio==='Ambos').reduce((a,x)=>a+(+x.val||0),0)/2;
+    // M4 — retirada marcada "Ambos" segue a divisão configurada, não 50/50 fixo.
+    const metadeAmbos=totalAmbos*((pctDe[nome]||0)/100);
     return {nome,
       qtd:vs.length,
       bruto:vs.reduce((a,v)=>a+(+v.bruto||0),0),
@@ -1670,13 +1750,13 @@ function dadosFechamento(mes){
   const spV=(DB.config&&DB.config.split_victor!=null)?+DB.config.split_victor:50;
   const spS=(DB.config&&DB.config.split_stefany!=null)?+DB.config.split_stefany:50;
   const split={Victor:spV,Stefany:spS};
-  const resultado=lucroTotal-custosTotal;   // lucro das vendas menos as despesas do mes
+  const resultado=lucroTotal-custosTotal;   // lucro das vendas menos despesa, imposto e outros
   porSocio.forEach(x=>{
     x.pct=split[x.nome]||0;
     x.direito=resultado*(x.pct/100);
     x.saldo=x.direito-x.retirado;
   });
-  return {mes,vend,said,lucroTotal,brutoTotal,recebTotal,custosTotal,resultado,porSocio,semDono};
+  return {mes,vend,said,lucroTotal,brutoTotal,recebTotal,custosTotal,reembolsoForn,resultado,porSocio,semDono};
 }
 function renderFechamento(){
   const el=document.getElementById('fechBox');if(!el)return;
@@ -1700,8 +1780,9 @@ function renderFechamento(){
   el.innerHTML=`
     <div class="metrics" style="margin-bottom:.875rem">
       <div class="met"><div class="met-l">Lucro das vendas</div><div class="met-v" style="color:var(--g)">${R(d.lucroTotal)}</div><div class="met-s">${d.vend.length} venda(s) em ${nomeMes}</div></div>
-      <div class="met"><div class="met-l">Custos e despesas</div><div class="met-v" style="color:var(--r)">${R(d.custosTotal)}</div><div class="met-s">fornecedor, despesa, imposto</div></div>
-      <div class="met"><div class="met-l">Resultado a dividir</div><div class="met-v" style="color:${d.resultado>=0?'var(--g)':'var(--r)'}">${R(d.resultado)}</div><div class="met-s">lucro &minus; custos</div></div>
+      <div class="met"><div class="met-l">Despesas do mês</div><div class="met-v" style="color:var(--r)">${R(d.custosTotal)}</div><div class="met-s">despesa, imposto, outros</div></div>
+      <div class="met"><div class="met-l">Reembolso de mercadoria</div><div class="met-v" style="color:var(--sub)">${R(d.reembolsoForn)}</div><div class="met-s">não entra no resultado</div></div>
+      <div class="met"><div class="met-l">Resultado a dividir</div><div class="met-v" style="color:${d.resultado>=0?'var(--g)':'var(--r)'}">${R(d.resultado)}</div><div class="met-s">lucro &minus; despesas</div></div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:.875rem">${cards}</div>
     ${aviso}
@@ -1713,7 +1794,8 @@ function exportFechamento(){
   const linhas=d.porSocio.map(x=>[x.nome,x.qtd,x.bruto.toFixed(2),x.lucro.toFixed(2),x.recebido.toFixed(2),x.fiado.toFixed(2),x.pct+'%',x.direito.toFixed(2),x.retirado.toFixed(2),x.saldo.toFixed(2)]);
   linhas.push(['','','','','','','','','','']);
   linhas.push(['Lucro total do m\u00eas','','','','','','',d.lucroTotal.toFixed(2),'','']);
-  linhas.push(['Custos e despesas','','','','','','',d.custosTotal.toFixed(2),'','']);
+  linhas.push(['Despesas do mês','','','','','','',d.custosTotal.toFixed(2),'','']);
+  linhas.push(['Reembolso de mercadoria (fora do resultado)','','','','','','',d.reembolsoForn.toFixed(2),'','']);
   linhas.push(['Resultado a dividir','','','','','','',d.resultado.toFixed(2),'','']);
   dlCSV('vs_fechamento_'+mes+'.csv',['S\u00f3cio','Vendas (qtd)','Bruto vendido','Lucro gerado','Recebido','A receber (fiado)','% do lucro','Cabe a ele(a)','J\u00e1 retirou','Saldo'],linhas);
 }
@@ -1743,6 +1825,12 @@ function renderFin(){
   }
 }
 async function delSaida(id){
+  // C5 — exclusão de lançamento financeiro sempre confirma, mostrando o que vai sumir.
+  // Foi assim que o pagamento de R$ 4.356,00 se perdeu em 15/09/2026.
+  const s0=DB.saidas.find(x=>x.id===id);
+  if(!s0){showToast('Lançamento não encontrado.','err');return;}
+  const tipoNome={prolabore:'Pró-labore',retirada:'Retirada',fornecedor:'Pagamento fornecedor',despesa:'Despesa',imposto:'Imposto',outros:'Outros'}[s0.tipo]||s0.tipo;
+  if(!confirm(`Excluir este lançamento do Financeiro?\n\n${tipoNome}${s0.socio?' — '+s0.socio:''}\n${s0.desc||'(sem descrição)'}\n${R(s0.val)} · ${fmtD(s0.data)}\n\nIsso não dá para desfazer, e vai mudar a conta dos fornecedores.`))return;
   showLoading('Removendo...');
   try{await sbDelete('saidas',id);const s=DB.saidas.find(x=>x.id===id);if(s)await audit('FINANCEIRO_EXCLUIDO',`${s.desc} — ${R(s.val)} excluído por ${currentUser}`);DB.saidas=DB.saidas.filter(s=>s.id!==id);}
   catch(e){hideLoading();showToast('Erro ao remover.','err');return;}
@@ -2193,15 +2281,15 @@ function showRepModal(){if(!DB.produtos.length){showToast('Cadastre um produto p
 function showRepModalFor(id){showRepModal();const s=document.getElementById('repProd');if(s){s.value=id;updateRepTipo();}}
 function calcRep(){
   const q=parseInt(document.getElementById('repQtd').value)||0;
-  const cu=parseFloat(document.getElementById('repCustUnit').value)||0;
-  const fr=parseFloat((document.getElementById('repFrete')||{}).value)||0;
+  const cu=valNum('repCustUnit')||0;
+  const fr=valNum('repFrete')||0;
   const tot=q*cu+fr;
   document.getElementById('repCustTot').value=(q&&cu)?R(tot):'';
   const el=document.getElementById('repCustReal');
   if(el)el.value=(q&&cu)?R(tot/q)+' / '+((document.getElementById('repTipo')||{}).value==='caixa'?'caixa':'frasco'):'';
 }
 async function confReposicao(){
-  const p=getProd(document.getElementById('repProd').value),t=document.getElementById('repTipo').value,q=parseInt(document.getElementById('repQtd').value)||0,cu=parseFloat(document.getElementById('repCustUnit').value)||0,forn=document.getElementById('repForn').value.trim(),data=document.getElementById('repData').value,obs=document.getElementById('repObs').value.trim();
+  const p=getProd(document.getElementById('repProd').value),t=document.getElementById('repTipo').value,q=parseInt(document.getElementById('repQtd').value)||0,cu=valNum('repCustUnit')||0,forn=document.getElementById('repForn').value.trim(),data=document.getElementById('repData').value,obs=document.getElementById('repObs').value.trim();
   if(!p){showToast('Selecione o produto.','err');return;}
   if(!q||!cu||!data){showToast('Preencha quantidade, custo e data.','err');return;}
   // Aviso de possível duplicidade (mesma compra lançada 2x)
@@ -2213,7 +2301,7 @@ async function confReposicao(){
   // valor real do estoque (caixas×custo da caixa + frascos×custo do frasco), não o frasco arredondado
   const valorAntes=valorEstProd(p);
   const novasUnidades=(t==='caixa')?q*fpcOf(p):q;
-  const frete=parseFloat((document.getElementById('repFrete')||{}).value)||0;
+  const frete=valNum('repFrete')||0;
   const valorNovo=q*cu+frete;   // frete entra no custo real da mercadoria
   if(t==='caixa')p.caixas+=q;else p.frascos+=q;
   const unidadesDepois=unidadesAntes+novasUnidades;
@@ -2253,12 +2341,12 @@ function updateProdForm(){
   const vende=document.getElementById('prodVende').value,frac=vende==='ambos';
   document.getElementById('prodFpcWrap').style.display=frac?'flex':'none';
   document.getElementById('prodCustoFrascoWrap').style.display=frac?'flex':'none';
-  if(frac){const cc=parseFloat(document.getElementById('prodCustoCaixa').value)||0,fpc=parseInt(document.getElementById('prodFpc').value)||1;document.getElementById('prodCustoFrasco').value=cc?(cc/fpc).toFixed(2):'';}
+  if(frac){const cc=valNum('prodCustoCaixa')||0,fpc=parseInt(document.getElementById('prodFpc').value)||1;document.getElementById('prodCustoFrasco').value=cc?(cc/fpc).toFixed(2):'';}
 }
 function showProdModal(){document.getElementById('prodModalTit').textContent='Novo produto';document.getElementById('prodEditId').value='';document.getElementById('prodNome').value='';document.getElementById('prodVende').value='caixa';document.getElementById('prodFpc').value='4';document.getElementById('prodCustoCaixa').value='';document.getElementById('prodCustoFrasco').value='';document.getElementById('prodPreco').value='';document.getElementById('prodMin').value='4';document.getElementById('prodCrit').value='2';updateProdForm();document.getElementById('prodModal').style.display='flex';}
 function editProduto(id){const p=getProd(id);if(!p)return;document.getElementById('prodModalTit').textContent='Editar produto';document.getElementById('prodEditId').value=id;document.getElementById('prodNome').value=p.nome;document.getElementById('prodVende').value=p.vendeFrasco?'ambos':'caixa';document.getElementById('prodFpc').value=p.fpc;document.getElementById('prodCustoCaixa').value=p.custoCaixa;document.getElementById('prodCustoFrasco').value=p.custoFrasco;document.getElementById('prodPreco').value=p.precoPadrao||'';document.getElementById('prodMin').value=p.estMin;document.getElementById('prodCrit').value=p.estCrit;updateProdForm();document.getElementById('prodModal').style.display='flex';}
 async function salvarProduto(){
-  const nome=document.getElementById('prodNome').value.trim(),vende=document.getElementById('prodVende').value,frac=vende==='ambos',fpc=frac?(parseInt(document.getElementById('prodFpc').value)||1):1,cc=parseFloat(document.getElementById('prodCustoCaixa').value)||0,pp=parseFloat(document.getElementById('prodPreco').value)||0,mn=parseInt(document.getElementById('prodMin').value)||0,ct=parseInt(document.getElementById('prodCrit').value)||0;
+  const nome=document.getElementById('prodNome').value.trim(),vende=document.getElementById('prodVende').value,frac=vende==='ambos',fpc=frac?(parseInt(document.getElementById('prodFpc').value)||1):1,cc=valNum('prodCustoCaixa')||0,pp=valNum('prodPreco')||0,mn=parseInt(document.getElementById('prodMin').value)||0,ct=parseInt(document.getElementById('prodCrit').value)||0;
   if(!nome){showToast('Informe o nome do produto.','err');return;}
   if(!cc){showToast('Informe o custo da caixa.','err');return;}
   const cf=frac?+(cc/fpc).toFixed(2):cc;
@@ -2473,6 +2561,12 @@ async function delCli(id){
     const tot=emAberto.reduce((a,v)=>a+(+v.bruto||0),0);
     if(!confirm('ATENCAO: este cliente ainda tem '+emAberto.length+' fiado(s) em aberto, somando '+R(tot)+'.\n\nSe remover, a divida continua aparecendo na aba Fiado, mas voce perde o cadastro (telefone e historico).\n\nRemover mesmo assim?'))return;
   }
+  // C5 — cliente com histórico nunca sai sem confirmação: as vendas dele ficam órfãs
+  // e o telefone se perde para sempre.
+  const c0=DB.clientes.find(x=>x.id==id);
+  const compras=DB.vendas.filter(v=>v.cliId==id&&!v.cancelada);
+  const gasto=compras.reduce((a,v)=>a+(+v.bruto||0),0);
+  if(!confirm(`Excluir o cliente ${c0?c0.nome:''}?\n\n${compras.length} compra(s) · ${R(gasto)} em vendas${c0&&c0.wpp?'\nWhatsApp '+c0.wpp:''}\n\nO histórico de vendas continua, mas fica sem dono: você perde o telefone e o vínculo. Não dá para desfazer.`))return;
   showLoading('Removendo...');
   const c=DB.clientes.find(x=>x.id==id);
   try{await sbDelete('clientes',id);if(c)await audit('CLIENTE_REMOVIDO',`${c.nome} removido por ${currentUser}`);DB.clientes=DB.clientes.filter(c=>c.id!=id);}
