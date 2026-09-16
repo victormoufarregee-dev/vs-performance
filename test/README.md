@@ -13,6 +13,7 @@ node test/run.js --sem-cor        # sem ANSI (log, CI, redirecionamento)
 node test/run.js --cor            # força cor mesmo sem TTY
 ```
 
+São 106 casos hoje: 50 no financeiro, 34 nos utilitários e 22 estáticos.
 Sai com código **1** se algum caso falhar (ou se um arquivo de teste não carregar),
 e **0** quando está tudo verde. Testado no Windows 11 com Git Bash e Node 24.
 
@@ -22,8 +23,8 @@ Existem **duas cópias do app no disco** e elas divergem:
 
 | cópia | papel |
 |---|---|
-| `C:\Users\victo\OneDrive\VS Performance - 25 - JULHO - 2026\index.html` | pasta de trabalho — é o **alvo padrão** da suíte |
-| `<repo>\index.html` (ao lado de `test/`) | cópia publicável, onde as correções C* vão entrando |
+| `<repo>\index.html` (ao lado de `test/`) | cópia publicável, onde as correções C* entram — é o **alvo padrão** da suíte |
+| `C:\Users\victo\OneDrive\VS Performance - 25 - JULHO - 2026\index.html` | pasta de trabalho do OneDrive, hoje **atrás** do repositório |
 
 O runner **imprime no cabeçalho** qual arquivo abriu, com tamanho, número de linhas
 e data de alteração, e avisa em amarelo quando a outra cópia difere. Nunca leia o
@@ -35,11 +36,18 @@ Para apontar para outro arquivo:
 VSP_INDEX="C:\caminho\para\index.html" node test/run.js
 ```
 
-A ordem de resolução é: `VSP_INDEX` → cópia do OneDrive → `../index.html`.
+A ordem de resolução é: `VSP_INDEX` → `../index.html` (o do repositório) → cópia do
+OneDrive. O repositório vem primeiro de propósito: ele é o que está sendo corrigido, e
+rodar contra a cópia velha do OneDrive dá **verde falso** nas correções.
+
+Rodando contra a cópia do OneDrive hoje, **4 casos falham** — são exatamente as quatro
+correções que já entraram no repositório e ainda não foram copiadas para lá (C1,
+rateio da "Ambos", leitura de número com vírgula e o texto de ajuda da caixinha
+"já paguei"). Isso é a suíte funcionando: ela sabe dizer qual cópia está velha.
 
 ## O que cada suíte cobre
 
-### `financeiro.test.js` — o dinheiro (47+ casos)
+### `financeiro.test.js` — o dinheiro (50 casos)
 
 * **Regressão da baseline de 15/09/2026.** Com o fixture de produção, o código real
   tem de devolver: `valorEstTotal()` = **4.660,00**, custo já vendido = **23.539,30**,
@@ -85,10 +93,11 @@ parseFloat('1.234,56') === 1.234    // no formato brasileiro cheio fica grotesco
 Number('150,00')       // NaN — comportamento diferente do parseFloat
 ```
 
-O caso ponta-a-ponta (digitar `582,50` no campo de custo e a compra entrar como
-582,00) está em `financeiro.test.js`, marcado como pendente.
+O caso ponta-a-ponta (digitar `582,50` no campo de custo e o valor chegar inteiro ao
+banco) está em `financeiro.test.js`. A prova acima é de linguagem e vale para sempre;
+a do app depende de o `numBR()` continuar no lugar.
 
-### `estatico.test.js` — o texto do arquivo (21 casos)
+### `estatico.test.js` — o texto do arquivo (22 casos)
 
 Não executa nada (fora o parse). Pega justamente o que o harness **não** pega:
 
@@ -112,28 +121,37 @@ Não executa nada (fora o parse). Pega justamente o que o harness **não** pega:
 ## Divergências documentadas (`it.pendente`)
 
 Um caso `it.pendente(nome, oQueEsperar, fn)` afirma o comportamento **correto**, que
-hoje ainda não acontece. Ele **não derrubar a suíte** é de propósito: a divergência
-está registrada, com o valor certo escrito no relatório, e quando a correção entrar o
-runner grita `PENDENTE AGORA PASSA — remova o marcador`. É o contrário de esconder o
-problema: ele aparece em toda rodada.
+ainda não acontece. Ele **não derrubar a suíte** é de propósito: a divergência fica
+registrada, com o valor certo escrito no relatório de toda rodada, e quando a correção
+entra o runner grita `PENDENTE AGORA PASSA — remova o marcador`. É o contrário de
+esconder o problema. Use este marcador para a próxima divergência conhecida em vez de
+comentar o teste ou escrever o número errado como se fosse o certo.
 
-Hoje, contra a cópia do OneDrive, são 4:
+Os quatro casos abaixo **nasceram como `it.pendente`** contra a cópia do OneDrive e
+foram convertidos em `it()` normais quando as correções entraram no repositório — o
+ciclo completo do mecanismo. Continuam aqui como regressão: se qualquer um voltar a
+divergir, a suíte cai.
 
-1. **C1 — `dadosFechamento` desconta o pagamento de fornecedor do lucro.** O
-   "resultado a dividir" de 09/2026 dá **3.882,70**; o correto é **8.238,70**, que é
-   exatamente o `operacional` do `dadosDRE` do mesmo mês. A diferença é **4.356,00** —
-   o pagamento de fornecedor de setembro. O custo da mercadoria já foi descontado no
-   lucro de cada venda; descontar o reembolso de novo tira o mesmo dinheiro duas vezes
-   e reduz o direito dos dois sócios.
+1. **C1 — `dadosFechamento` descontava o pagamento de fornecedor do lucro.** Na cópia
+   velha o "resultado a dividir" de 09/2026 dava **3.882,70**; o correto é **8.238,70**,
+   que é exatamente o `operacional` do `dadosDRE` do mesmo mês. A diferença era
+   **4.356,00** — o pagamento de fornecedor de setembro. O custo da mercadoria já foi
+   descontado no lucro de cada venda; descontar o reembolso de novo tira o mesmo
+   dinheiro duas vezes e reduz o direito dos dois sócios.
 2. **Retirada "Ambos" dividida por 2 fixo.** Com split 60/40 e retirada conjunta de
-   1.200,00, Victor deveria absorver 720,00 e Stefany 480,00; hoje os dois ficam com
-   600,00. A mesma divisão por 2 está escrita **em dois lugares** (`dadosFechamento` e
-   o painel por sócio do `renderFin`) e os dois precisam mudar juntos — existe um caso
-   normal (não pendente) só para garantir que os dois números continuem concordando.
-3. **Custo digitado com vírgula.** `582,50` no campo de custo entra como 582,00.
+   1.200,00, Victor absorve 720,00 e Stefany 480,00 — na cópia velha os dois ficavam
+   com 600,00. A divisão está escrita **em dois lugares** (`dadosFechamento` e o painel
+   por sócio do `renderFin`) e os dois precisam mudar juntos: existe um caso separado
+   (`o rateio da "Ambos" e o MESMO...`) só para garantir que os dois números continuem
+   concordando. Foi ele que pegou a correção aplicada em um lugar só.
+3. **Custo digitado com vírgula.** `582,50` no campo de custo entrava como 582,00
+   (`parseFloat` para de ler na vírgula). Hoje o repositório tem `numBR()`/`valNum()`
+   e o teste exige os 582,50 — a prova no nível da linguagem continua em
+   `util.test.js`, porque `parseFloat('150,00') === 150` não muda nunca.
 4. **Texto de ajuda desatualizado.** Quatro trechos (tour, ajuda de Compras, ajuda de
-   Saídas e a nota do painel de compras) ainda falam da caixinha "já paguei", que foi
-   removida em 15/09. O texto manda o usuário procurar um controle que não existe mais.
+   Saídas e a nota do painel de compras) falavam da caixinha "já paguei", removida em
+   15/09: o texto mandava o usuário procurar um controle que não existe mais. O caso
+   exige zero ocorrências de "paguei" no arquivo.
 
 ## De onde vêm os dados de teste
 

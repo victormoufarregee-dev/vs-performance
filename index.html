@@ -1499,11 +1499,15 @@ async function regVenda(){
   else if(totFP(p)<q){showToast('Estoque insuficiente.','err');return;}
   let ci=document.getElementById('vCliSel').value,cn='',cw='';
   if(!ci){cn=document.getElementById('vCliNome').value.trim();cw=document.getElementById('vCliWpp').value.trim();if(!cn||!cw){showToast('Informe nome e WhatsApp.','err');return;}
-    // Cliente já cadastrado com o mesmo WhatsApp? Reaproveita em vez de duplicar.
+    // Telefone repetido NÃO prova que é a mesma pessoa — o banco de produção tem dois
+    // clientes reais com o mesmo número e nomes diferentes. Por isso aqui pergunta,
+    // em vez de fundir os cadastros por conta própria.
     const soDig=s=>String(s||'').replace(/\D/g,'');
     const jaTem=DB.clientes.find(x=>soDig(x.tel)&&soDig(x.tel)===soDig(cw));
-    if(jaTem){ci=jaTem.id;cn=jaTem.nome;cw=jaTem.tel;showToast('Este WhatsApp já é do cliente '+jaTem.nome+' — usei o cadastro dele.','warn');}
-    else{
+    if(jaTem&&confirm('O WhatsApp '+cw+' já está cadastrado como:\n\n'+jaTem.nome+'\n\nÉ a mesma pessoa?\n\nOK — lançar a venda para '+jaTem.nome+'\nCancelar — cadastrar '+cn+' como cliente novo, com o mesmo telefone')){
+      ci=jaTem.id;cn=jaTem.nome;cw=jaTem.tel;
+    }
+    if(!ci){
       showLoading('Cadastrando cliente...');
       try{const nc=await sbPost('clientes',{id:Date.now(),nome:cn,tel:cw,obs:''});if(Array.isArray(nc)&&nc[0]){DB.clientes.push(nc[0]);ci=nc[0].id;}else{ci=Date.now();DB.clientes.push({id:ci,nome:cn,tel:cw,obs:''});}}
       catch(e){hideLoading();showToast('Não consegui cadastrar o cliente. A venda NÃO foi lançada — confira a internet e tente de novo.','err');return;}
