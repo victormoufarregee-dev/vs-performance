@@ -148,6 +148,12 @@ tr.cancelled td{opacity:.55}
 .qr-btn{flex:1;min-width:90px;background:var(--gl);color:var(--gd);border:1px solid #9FE1CB;border-radius:10px;padding:12px 10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
 .qr-btn:hover{background:#cfeee2}
 .venda-actions{display:flex;align-items:center;gap:10px}
+#vicCards{display:none}
+.vic-mov{border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px}
+.vic-mov .l1{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.vic-mov .l2{font-size:12px;color:var(--sub);margin-top:4px;line-height:1.45}
+.vic-mov .l3{display:flex;justify-content:space-between;margin-top:6px;padding-top:6px;border-top:1px solid var(--border);font-size:12px}
+@media(max-width:700px){#vicTabela{display:none}#vicCards{display:block}}
 @media(max-width:600px){.fr,.fr3,.fr4{grid-template-columns:1fr}.meta-grid{grid-template-columns:1fr}.topbar{height:auto;padding:.5rem;flex-wrap:wrap}.nav{order:3;width:100%;padding-bottom:.25rem}.content{padding:.875rem}#p-venda input,#p-venda select{font-size:16px;padding:12px 12px}#p-venda .btn{width:100%;justify-content:center;padding:14px;font-size:15px}.venda-actions{position:sticky;bottom:0;background:var(--bg);padding:10px 0 calc(10px + env(safe-area-inset-bottom,0px));margin:0 -.2rem;z-index:30;box-shadow:0 -4px 12px rgba(0,0,0,.06)}
 .nav{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none}
 .nav::-webkit-scrollbar{display:none}
@@ -196,6 +202,7 @@ input,select,textarea{font-size:16px;padding:11px 12px}
       <button class="nb" id="nb-venda" onclick="gp('venda',this)"><i class="ti ti-plus"></i> Nova venda</button>
       <button class="nb" id="nb-fiado" onclick="gp('fiado',this)"><i class="ti ti-clock-dollar"></i> Fiado</button>
       <button class="nb" id="nb-financeiro" onclick="gp('financeiro',this)"><i class="ti ti-wallet"></i> Financeiro</button>
+      <button class="nb" id="nb-victor" onclick="gp('victor',this)"><i class="ti ti-receipt"></i> Conta do V&iacute;ctor</button>
       <button class="nb" id="nb-clientes" onclick="gp('clientes',this)"><i class="ti ti-users"></i> Clientes</button>
       <button class="nb" id="nb-recontato" onclick="gp('recontato',this)"><i class="ti ti-phone-call"></i> Recontato</button>
       <button class="nb" id="nb-estoque" onclick="gp('estoque',this)"><i class="ti ti-box"></i> Estoque</button>
@@ -249,6 +256,7 @@ input,select,textarea{font-size:16px;padding:11px 12px}
         <div class="card"><p class="ct">Formas de pagamento (lucro)</p><div id="dashPgto"></div></div>
         <div class="card"><p class="ct">Saídas do mês</p><div id="dashSaidas"></div></div>
         <div class="card"><p class="ct">Caixa do mês (dinheiro)</p><div id="dashResultado"></div></div>
+        <div class="card"><p class="ct">Conta do V&iacute;ctor</p><div id="dashVictor"></div></div>
       </div>
       <div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem"><p class="ct" style="margin:0">Vendas recentes</p><button class="btn-s" onclick="gp('hist',document.getElementById('nb-hist'))"><i class="ti ti-history"></i> Ver todas</button></div><div id="dashRecent"></div></div>
       <div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem"><p class="ct" style="margin:0"><i class="ti ti-package"></i> Compras recentes (reposição de estoque)</p><button class="btn-s" onclick="gp('estoque',document.getElementById('nb-estoque'))"><i class="ti ti-box"></i> Ver estoque</button></div><div id="dashCompras"></div></div>
@@ -368,7 +376,33 @@ input,select,textarea{font-size:16px;padding:11px 12px}
         <div class="card" style="margin:0"><p class="ct">Victor — retiradas</p><div id="socioVictor"></div></div>
         <div class="card" style="margin:0"><p class="ct">Stefany — retiradas</p><div id="socioStefany"></div></div>
       </div>
-      <div class="card"><p class="ct">Conta dos fornecedores (o que a empresa ainda deve)</p><div id="fornBody"></div><p style="font-size:11px;color:var(--sub);margin-top:6px">Mercadoria fornecida = custo do que já foi vendido + custo do estoque atual (tudo que entrou). Menos o que já foi pago (saídas tipo "Pagamento fornecedor") = o que a empresa ainda deve. Atualiza sozinho conforme vende e paga.</p></div>
+      <div class="card"><p class="ct">Conta do V&iacute;ctor (o que a empresa deve a voc&ecirc;)</p><div id="fornBody"></div><p style="font-size:11px;color:var(--sub);margin-top:6px">Vem do raz&atilde;o da sua conta: cada compra que voc&ecirc; bancou entra como d&eacute;bito, cada reembolso como cr&eacute;dito. Quebra, perda, sobra de invent&aacute;rio e venda mexem no estoque e <strong>n&atilde;o</strong> mexem aqui.</p></div>
+    </div>
+
+    <div id="p-victor" class="page">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
+        <p class="stitle" style="margin:0">Conta do V&iacute;ctor</p>
+        <button class="btn-s" onclick="exportVictor()"><i class="ti ti-download"></i> Exportar</button>
+      </div>
+      <div class="meta-grid" id="vicTopo"></div>
+      <div class="card">
+        <p class="ct">Extrato</p>
+        <div class="fr"><div class="fg"><label>De</label><input type="date" id="vicDe" onchange="aplicarFiltroVic()"/></div>
+        <div class="fg"><label>At&eacute;</label><input type="date" id="vicAte" onchange="aplicarFiltroVic()"/></div></div>
+        <div class="fr"><div class="fg"><label>Tipo</label><select id="vicTipo" onchange="aplicarFiltroVic()">
+          <option value="">Todos</option><option value="compra_financiada">Compra paga por voc&ecirc;</option>
+          <option value="reembolso">Reembolso recebido</option><option value="saldo_inicial">Saldo inicial</option>
+          <option value="estorno">Estorno</option><option value="ajuste_financeiro">Ajuste financeiro</option></select></div>
+        <div class="fg"><label>Origem</label><select id="vicOrigem" onchange="aplicarFiltroVic()">
+          <option value="">Todas</option><option value="reposicao">Compra de estoque</option>
+          <option value="saida">Lan&ccedil;amento financeiro</option><option value="migracao">Apura&ccedil;&atilde;o hist&oacute;rica</option></select></div></div>
+        <button class="btn-s" style="margin-bottom:.75rem" onclick="limparFiltroVic()">Limpar filtros</button>
+        <p id="vicEmpty" style="display:none;font-size:13px;color:var(--sub)"></p>
+        <div id="vicCards"></div>
+        <div class="tw" id="vicTabela"><table><thead><tr><th>Data</th><th>Tipo</th><th>Descri&ccedil;&atilde;o</th><th>Origem</th>
+          <th style="text-align:right">Voc&ecirc; financiou</th><th style="text-align:right">Recebeu</th><th style="text-align:right">Saldo ap&oacute;s</th>
+        </tr></thead><tbody id="vicBody"></tbody></table></div>
+      </div>
     </div>
 
     <div id="p-clientes" class="page">
@@ -688,7 +722,7 @@ function enfileirar(url,opts){
 function salvarCache(){
   lsSet(CACHE_KEY,{quando:getNow().display,usuario:currentUser,
     produtos:DB.produtos,vendas:DB.vendas,clientes:DB.clientes,
-    saidas:DB.saidas,reposicoes:DB.reposicoes,config:DB.config});
+    saidas:DB.saidas,reposicoes:DB.reposicoes,ledger:ledgerMovs(),config:DB.config});
 }
 function temCache(){const c=lsGet(CACHE_KEY);return !!(c&&c.produtos);}
 
@@ -845,7 +879,7 @@ let authToken='';
 let META_LUCRO_MES=6000,META_BRUTO_MES=12000,META_LUCRO_SEM=1500,META_BRUTO_SEM=3000;
 const RECOMPRA_DIAS={frasco:30,caixa:90}; // dias estimados de duração para alertar recompra
 let sessionTimer,loggedIn=false,currentUser='',finTabAtual='all';
-let DB={produtos:[],vendas:[],clientes:[],saidas:[],reposicoes:[],auditLog:[],config:{}};
+let DB={produtos:[],vendas:[],clientes:[],saidas:[],reposicoes:[],auditLog:[],ledger:[],config:{}};
 function brDateTimeToDate(s){if(!s)return null;const m=String(s).match(/(\d{2})\/(\d{2})\/(\d{4})/);if(!m)return null;return new Date(+m[3],+m[2]-1,+m[1]);}
 const _charts={};
 
@@ -899,6 +933,35 @@ function totFP(p){return (p.caixas||0)*fpcOf(p)+(p.frascos||0);}
 function cuProd(p,tipo,q){return tipo==='caixa'?(p.custoCaixa||0)*q:(p.custoFrasco||0)*q;}
 function valorEstProd(p){return (p.caixas||0)*(p.custoCaixa||0)+(p.frascos||0)*(p.custoFrasco||0);}
 function valorEstTotal(){return DB.produtos.reduce((a,p)=>a+valorEstProd(p),0);}
+// ============================================================
+// CONTA DO VICTOR - fonte canonica
+// A divida da empresa com o Victor NAO se calcula a partir do estoque. Ela vem do razao
+// (ledger_victor), onde cada movimento e um fato financeiro: compra que ele bancou (debito)
+// ou reembolso que ele recebeu (credito). Quebra, perda, sobra de inventario e venda mexem
+// no estoque e nao encostam aqui.
+// CONVENCAO UNICA: saldo positivo = a empresa DEVE ao Victor.
+// ============================================================
+function mapLedger(m){return{
+  id:m.id, data:m.data, tipo:m.tipo, direcao:m.direcao,
+  valor:Number(m.valor||0), descricao:m.descricao||'',
+  origemTipo:m.origem_tipo||'', origemId:m.origem_id,
+  estornaId:m.estorna_id, estornadoEm:m.estornado_em,
+  criadoPor:m.created_by||'', saldoCorrido:Number(m.saldo_corrido||0)
+};}
+// quem abrir com um cache salvo antes desta versao nao tem DB.ledger
+function ledgerMovs(){return Array.isArray(DB.ledger)?DB.ledger:[];}
+function saldoVictor(){return ledgerMovs().reduce((a,m)=>a+(m.direcao==='debito'?m.valor:-m.valor),0);}
+const LEDGER_ROTULO={saldo_inicial:'Saldo inicial',compra_financiada:'Compra paga por voc\u00ea',reembolso:'Reembolso recebido',ajuste_financeiro:'Ajuste financeiro',estorno:'Estorno'};
+function ledgerRotulo(t){return LEDGER_ROTULO[t]||t;}
+function ledgerOrigemTexto(m){
+  if(m.origemTipo==='reposicao'){const r=DB.reposicoes.find(x=>x.id===m.origemId);
+    return r?('Compra de '+fmtD(r.data)+' \u00b7 '+prodNome(r.prod)):('Compra #'+m.origemId+' (j\u00e1 estornada)');}
+  if(m.origemTipo==='saida'){const s=DB.saidas.find(x=>x.id===m.origemId);
+    return s?('Lan\u00e7amento de '+fmtD(s.data)+(s.pgto?' \u00b7 '+s.pgto:'')):('Lan\u00e7amento #'+m.origemId+' (removido)');}
+  if(m.origemTipo==='migracao')return 'Apura\u00e7\u00e3o hist\u00f3rica';
+  if(m.estornaId)return 'Estorna o movimento #'+m.estornaId;
+  return '\u2014';
+}
 function tipoLabel(t){return t==='caixa'?'Caixa':'Frasco';}
 
 // ============================================================
@@ -1078,13 +1141,15 @@ async function loadAll(silencioso){
   if(!silencioso)showLoading('Carregando dados...');
   loadErros=[];
   const puxar=async(t,params)=>{try{return await sbGet(t,params);}catch(e){loadErros.push(e.message);return null;}};
-  const[produtos,vendas,clientes,saidas,reps,logs]=await Promise.all([
+  const[produtos,vendas,clientes,saidas,reps,logs,ledger]=await Promise.all([
     puxar('produtos','order=nome.asc'),
     puxar('vendas','order=id.asc'),
     puxar('clientes','order=id.asc'),
     puxar('saidas','order=id.asc'),
     puxar('reposicoes','order=id.asc'),
-    puxar('audit_log','order=id.desc&limit=500')
+    puxar('audit_log','order=id.desc&limit=500'),
+    // a Conta do Victor vem do razao, com o saldo corrido ja calculado pelo banco
+    puxar('v_ledger_victor','order=data.asc,id.asc')
   ]);
   // Cada tabela é independente: se uma falhar, as outras continuam carregando.
   if(produtos===null){DB.produtos=DB.produtos||[];}
@@ -1095,6 +1160,7 @@ async function loadAll(silencioso){
   if(Array.isArray(saidas))DB.saidas=saidas.map(mapSaida);
   if(Array.isArray(reps))DB.reposicoes=reps.map(mapRep);
   if(Array.isArray(logs))DB.auditLog=logs;
+  if(Array.isArray(ledger))DB.ledger=ledger.map(mapLedger);
   try{const cfg=await sbGet('config','id=eq.1');if(Array.isArray(cfg)&&cfg[0]){const c=cfg[0];DB.config=c;if(c.meta_lucro_mes!=null)META_LUCRO_MES=+c.meta_lucro_mes;if(c.meta_bruto_mes!=null)META_BRUTO_MES=+c.meta_bruto_mes;if(c.meta_lucro_sem!=null)META_LUCRO_SEM=+c.meta_lucro_sem;if(c.meta_bruto_sem!=null)META_BRUTO_SEM=+c.meta_bruto_sem;}}catch(e){}
   ultCarga=getNow().display;
   if(!loadErros.length)salvarCache();
@@ -1262,7 +1328,7 @@ function entrarOffline(){
   const c=lsGet(CACHE_KEY);
   if(!c||!c.produtos){loginErro('Nenhuma copia salva neste aparelho. Entre uma vez com internet.');return;}
   DB.produtos=c.produtos||[];DB.vendas=c.vendas||[];DB.clientes=c.clientes||[];
-  DB.saidas=c.saidas||[];DB.reposicoes=c.reposicoes||[];DB.config=c.config||{};DB.auditLog=[];
+  DB.saidas=c.saidas||[];DB.reposicoes=c.reposicoes||[];DB.ledger=c.ledger||[];DB.config=c.config||{};DB.auditLog=[];
   loggedIn=true;currentUser=c.usuario||'Offline';semRede=true;
   document.getElementById('ls').style.display='none';
   document.getElementById('app').style.display='flex';
@@ -1303,7 +1369,7 @@ function gp(id,btn){
   document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
   document.getElementById('p-'+id).classList.add('active');if(btn)btn.classList.add('active');
   if(id==='dash')renderDash();if(id==='estoque'){renderEst();renderLotes();renderPrevisao();}if(id==='hist')renderHist();
-  if(id==='clientes'){renderCli();renderInteligencia();}if(id==='fiado')renderFiado();if(id==='financeiro'){renderFin();renderFechamento();}
+  if(id==='clientes'){renderCli();renderInteligencia();}if(id==='fiado')renderFiado();if(id==='financeiro'){renderFin();renderFechamento();renderVictor();}if(id==='victor')renderVictor();
   if(id==='graficos')renderGraficos();if(id==='rel')renderDRE();if(id==='cancelamentos')renderCancelamentos();if(id==='auditoria')renderAudit();
   if(id==='produtos')renderProdutos();if(id==='recontato')renderRecontato();if(id==='config')populateConfig();
 }
@@ -1655,7 +1721,7 @@ function exportProdutos(){dlCSV('vs_produtos.csv',['Produto','Vende frasco','Fra
 function montarDump(){
   const{display}=getNow();
   return {app:'VS Performance',versao:APP_VERSION,exportado_em:display,por:currentUser,
-    produtos:DB.produtos,vendas:DB.vendas,clientes:DB.clientes,saidas:DB.saidas,reposicoes:DB.reposicoes};
+    produtos:DB.produtos,vendas:DB.vendas,clientes:DB.clientes,saidas:DB.saidas,reposicoes:DB.reposicoes,ledger:ledgerMovs()};
 }
 async function gravarBackupNuvem(tipo){
   const{display}=getNow();
@@ -1837,15 +1903,103 @@ function renderFin(){
   if(!s.length){body.innerHTML='';empty.style.display='';}else{empty.style.display='none';
   body.innerHTML=s.map(x=>`<tr><td>${fmtD(x.data)}</td><td><span class="badge ${tipoBadge[x.tipo]||'bdin'}">${tipoMap[x.tipo]||x.tipo}</span></td><td>${['prolabore','retirada'].includes(x.tipo)?x.socio:'—'}</td><td>${x.desc}</td><td><span class="badge bdin">${x.pgto}</span></td><td style="font-weight:500;color:var(--r)">${R(x.val)}</td><td><button class="btn-d" onclick="delSaida(${x.id})"><i class="ti ti-trash"></i></button></td></tr>`).join('');}
   ['Victor','Stefany'].forEach(so=>{const el=document.getElementById('socio'+so),itens=DB.saidas.filter(x=>['prolabore','retirada'].includes(x.tipo)&&(x.socio===so||x.socio==='Ambos')),pctSo=((DB.config&&DB.config['split_'+so.toLowerCase()]!=null)?+DB.config['split_'+so.toLowerCase()]:50)/100,tot2=itens.reduce((a,x)=>a+(x.socio==='Ambos'?x.val*pctSo:x.val),0);el.innerHTML=itens.length?`<div class="ir"><span>Total retirado</span><span style="color:var(--r)">${R(tot2)}</span></div>${[...itens].slice(-3).reverse().map(x=>`<div class="ir"><span>${fmtD(x.data)} · ${x.desc}</span><span>${R(x.socio==='Ambos'?x.val/2:x.val)}</span></div>`).join('')}`:'<p style="font-size:12px;color:var(--sub)">Nenhuma retirada.</p>';});
+  // Conta do Victor no Financeiro: vem do razao, nao do estoque.
   const fb=document.getElementById('fornBody');
   if(fb){
-    const mercadoriaFornecida=custoTot+valorEstTotal();
-    const pagoForn=DB.saidas.filter(s=>s.tipo==='fornecedor').reduce((a,s)=>a+s.val,0);
-    const faltaPagar=mercadoriaFornecida-pagoForn;
-    const pagoPor={};DB.saidas.filter(s=>s.tipo==='fornecedor').forEach(s=>{const n=s.socio||'(sem nome)';pagoPor[n]=(pagoPor[n]||0)+s.val;});
-    const perF=Object.keys(pagoPor).map(n=>`<div class="ir"><span>Já pago a ${n}</span><span style="color:var(--g)">${R(pagoPor[n])}</span></div>`).join('');
-    fb.innerHTML=`<div class="ir"><span>Mercadoria fornecida (vendida + em estoque)</span><span style="font-weight:500">${R(mercadoriaFornecida)}</span></div><div class="ir"><span>Custo já vendido</span><span style="color:var(--sub)">${R(custoTot)}</span></div><div class="ir"><span>Custo do estoque atual</span><span style="color:var(--sub)">${R(valorEstTotal())}</span></div><div class="ir"><span>Já pago aos fornecedores</span><span style="color:var(--g)">${R(pagoForn)}</span></div><hr class="divider"/><div class="ir"><span style="font-weight:500">Falta pagar ao(s) fornecedor(es)</span><span style="font-size:15px;font-weight:600;color:${faltaPagar>0.5?'var(--r)':'var(--g)'}">${R(faltaPagar)}</span></div>${perF?'<hr class="divider"/>'+perF:''}`;
+    const mv=ledgerMovs();
+    if(!mv.length){
+      fb.innerHTML='<p style="font-size:12px;color:var(--sub)">Nenhum movimento carregado. Toque no bot\u00e3o de sincronizar para buscar da nuvem.</p>';
+    }else{
+      const sv=saldoVictor();
+      const finV=mv.filter(m=>m.direcao==='debito').reduce((a,m)=>a+m.valor,0);
+      const rbV=mv.filter(m=>m.direcao==='credito').reduce((a,m)=>a+m.valor,0);
+      const ult=mv.slice(-3).reverse();
+      fb.innerHTML='<div class="ir"><span>Voc\u00ea financiou</span><span style="font-weight:500">'+R(finV)+'</span></div>'
+        +'<div class="ir"><span>J\u00e1 recebeu de volta</span><span style="color:var(--g)">'+R(rbV)+'</span></div>'
+        +'<hr class="divider"/><div class="ir"><span style="font-weight:500">A empresa deve a voc\u00ea</span>'
+        +'<span style="font-size:16px;font-weight:600;color:'+(sv>0.5?'var(--r)':'var(--g)')+'">'+R(sv)+'</span></div>'
+        +'<p style="font-size:11px;color:var(--sub);margin:8px 0 4px">\u00daltimos movimentos</p>'
+        +ult.map(function(m){return '<div class="ir"><span style="font-size:12px">'+fmtD(m.data)+' \u00b7 '+ledgerRotulo(m.tipo)+'</span>'
+          +'<span style="color:'+(m.direcao==='debito'?'var(--r)':'var(--g)')+'">'+(m.direcao==='debito'?'+':'\u2212')+R(m.valor)+'</span></div>';}).join('')
+        +'<button class="btn-s" style="width:100%;margin-top:10px" onclick="gp(\'victor\',document.getElementById(\'nb-victor\'))">Ver extrato completo</button>';
+    }
   }
+}
+// ============================================================
+// EXTRATO DA CONTA DO VICTOR
+// ============================================================
+let vicFiltro={de:'',ate:'',tipo:'',origem:''};
+function vicTemFiltro(){return !!(vicFiltro.de||vicFiltro.ate||vicFiltro.tipo||vicFiltro.origem);}
+function renderVictor(){
+  const topo=document.getElementById('vicTopo'),corpo=document.getElementById('vicBody'),vazio=document.getElementById('vicEmpty');
+  if(!topo||!corpo)return;
+  const todos=ledgerMovs();
+  if(!todos.length){
+    topo.innerHTML='';corpo.innerHTML='';const c0=document.getElementById('vicCards');if(c0)c0.innerHTML='';
+    if(vazio){vazio.style.display='';vazio.textContent='Nenhum movimento carregado. Toque no bot\u00e3o de sincronizar para buscar da nuvem.';}
+    return;
+  }
+  const sv=saldoVictor();
+  let mov=todos.slice();
+  if(vicFiltro.de)    mov=mov.filter(m=>m.data>=vicFiltro.de);
+  if(vicFiltro.ate)   mov=mov.filter(m=>m.data<=vicFiltro.ate);
+  if(vicFiltro.tipo)  mov=mov.filter(m=>m.tipo===vicFiltro.tipo);
+  if(vicFiltro.origem)mov=mov.filter(m=>m.origemTipo===vicFiltro.origem);
+  const finP=mov.filter(m=>m.direcao==='debito').reduce((a,m)=>a+m.valor,0);
+  const rbP=mov.filter(m=>m.direcao==='credito').reduce((a,m)=>a+m.valor,0);
+  const escopo=vicTemFiltro()?'no filtro':'total';
+  const ini=todos.find(m=>m.tipo==='saldo_inicial');
+  topo.innerHTML='<div class="met"><div class="met-l">A empresa deve a voc\u00ea</div>'
+      +'<div class="met-v" style="font-size:24px;color:'+(sv>0.5?'var(--r)':'var(--g)')+'">'+R(sv)+'</div>'
+      +'<div class="met-s">saldo atual da conta</div></div>'
+    +'<div class="met"><div class="met-l">Voc\u00ea financiou</div><div class="met-v">'+R(finP)+'</div><div class="met-s">'+escopo+'</div></div>'
+    +'<div class="met"><div class="met-l">J\u00e1 recebeu de volta</div><div class="met-v" style="color:var(--g)">'+R(rbP)+'</div><div class="met-s">'+escopo+'</div></div>'
+    +(ini?'<div class="met"><div class="met-l">Saldo inicial da conta</div><div class="met-v" style="color:var(--sub)">'+R(ini.valor)+'</div><div class="met-s">'+fmtD(ini.data)+' \u00b7 apura\u00e7\u00e3o hist\u00f3rica</div></div>':'');
+  if(!mov.length){
+    corpo.innerHTML='';const c1=document.getElementById('vicCards');if(c1)c1.innerHTML='';
+    if(vazio){vazio.style.display='';vazio.textContent='Nenhum movimento nesse filtro. Ajuste o per\u00edodo ou toque em Limpar.';}
+    return;
+  }
+  if(vazio)vazio.style.display='none';
+  // no celular o extrato e uma lista de cartoes: 7 colunas nao cabem em 390px sem
+  // obrigar o usuario a arrastar a tabela de lado para achar o saldo
+  const cards=document.getElementById('vicCards');
+  if(cards){
+    cards.innerHTML=mov.slice().reverse().map(function(m){
+      const deb=m.direcao==='debito';
+      return '<div class="vic-mov"><div class="l1">'
+        +'<span class="badge '+(deb?'bfiad':'bpro')+'">'+ledgerRotulo(m.tipo)+'</span>'
+        +'<span style="font-size:15px;font-weight:600;color:'+(deb?'var(--r)':'var(--g)')+'">'
+        +(deb?'+':'\u2212')+R(m.valor)+'</span></div>'
+        +'<div class="l2">'+fmtD(m.data)+' \u00b7 '+m.descricao+'</div>'
+        +'<div class="l3"><span style="color:var(--sub)">'+ledgerOrigemTexto(m)+'</span>'
+        +'<span>saldo <strong>'+R(m.saldoCorrido)+'</strong></span></div></div>';
+    }).join('');
+  }
+  corpo.innerHTML=mov.slice().reverse().map(function(m){
+    const deb=m.direcao==='debito';
+    return '<tr><td style="white-space:nowrap">'+fmtD(m.data)+'</td>'
+      +'<td><span class="badge '+(deb?'bfiad':'bpro')+'">'+ledgerRotulo(m.tipo)+'</span></td>'
+      +'<td style="font-size:12px">'+m.descricao+'</td>'
+      +'<td style="font-size:11px;color:var(--sub)">'+ledgerOrigemTexto(m)+'</td>'
+      +'<td style="text-align:right;color:var(--r);white-space:nowrap">'+(deb?R(m.valor):'\u2014')+'</td>'
+      +'<td style="text-align:right;color:var(--g);white-space:nowrap">'+(deb?'\u2014':R(m.valor))+'</td>'
+      +'<td style="text-align:right;font-weight:600;white-space:nowrap">'+R(m.saldoCorrido)+'</td></tr>';
+  }).join('');
+}
+function aplicarFiltroVic(){
+  vicFiltro={de:(document.getElementById('vicDe')||{}).value||'',ate:(document.getElementById('vicAte')||{}).value||'',
+             tipo:(document.getElementById('vicTipo')||{}).value||'',origem:(document.getElementById('vicOrigem')||{}).value||''};
+  renderVictor();
+}
+function limparFiltroVic(){
+  ['vicDe','vicAte','vicTipo','vicOrigem'].forEach(function(i){const e=document.getElementById(i);if(e)e.value='';});
+  vicFiltro={de:'',ate:'',tipo:'',origem:''};renderVictor();
+}
+function exportVictor(){
+  dlCSV('vs_conta_victor.csv',['Data','Tipo','Descricao','Origem','Voce financiou','Recebeu','Saldo apos'],
+    ledgerMovs().map(function(m){return [fmtD(m.data),ledgerRotulo(m.tipo),m.descricao,ledgerOrigemTexto(m),
+      m.direcao==='debito'?m.valor.toFixed(2):'',m.direcao==='credito'?m.valor.toFixed(2):'',m.saldoCorrido.toFixed(2)];}));
 }
 async function delSaida(id){
   // C5 — exclusão de lançamento financeiro sempre confirma, mostrando o que vai sumir.
@@ -1984,6 +2138,23 @@ function renderDash(){
   const saidasMes=DB.saidas.filter(s=>s.data&&s.data.startsWith(mes)).reduce((a,s)=>a+s.val,0);
   const caixaMes=recebidoMes-saidasMes;
   const notaRes=caixaMes<0?`<p style="font-size:10px;color:var(--sub);margin-top:6px;line-height:1.5">Negativo = neste mês saiu mais dinheiro do caixa do que entrou (ex.: pagamento de fornecedor, retiradas ou compras maiores que o recebido). Não é prejuízo do produto — o lucro de cada venda está acima. Equilibra conforme você recebe e vende o estoque.</p>`:`<p style="font-size:10px;color:var(--sub);margin-top:6px;line-height:1.5">Caixa = dinheiro que entrou (vendas recebidas) − dinheiro que saiu (fornecedor, despesas, retiradas) no mês.</p>`;
+  // Conta do Victor no Dashboard: le do razao, nunca recalcula por estoque.
+  const dv=document.getElementById('dashVictor');
+  if(dv){
+    const mvD=ledgerMovs();
+    if(!mvD.length){ dv.innerHTML='<p style="font-size:12px;color:var(--sub)">Sem movimentos carregados.</p>'; }
+    else{
+      const svD=saldoVictor();
+      const finD=mvD.filter(m=>m.direcao==='debito').reduce((a,m)=>a+m.valor,0);
+      const rbD=mvD.filter(m=>m.direcao==='credito').reduce((a,m)=>a+m.valor,0);
+      dv.innerHTML='<div class="ir"><span>Voc\u00ea financiou</span><span>'+R(finD)+'</span></div>'
+        +'<div class="ir"><span>J\u00e1 recebeu de volta</span><span style="color:var(--g)">'+R(rbD)+'</span></div>'
+        +'<hr class="divider" style="margin:.5rem 0"/>'
+        +'<div class="ir" style="border:none"><span style="font-weight:500">A empresa deve a voc\u00ea</span>'
+        +'<span style="font-size:15px;font-weight:600;color:'+(svD>0.5?'var(--r)':'var(--g)')+'">'+R(svD)+'</span></div>'
+        +'<p style="font-size:10px;color:var(--sub);margin-top:6px;line-height:1.5">Vem do raz\u00e3o da sua conta. Perda, quebra ou ajuste de estoque n\u00e3o mudam este n\u00famero \u2014 s\u00f3 compra que voc\u00ea banca e reembolso que voc\u00ea recebe.</p>';
+    }
+  }
   document.getElementById('dashResultado').innerHTML=`<div class="ir"><span>Recebido no mês</span><span style="color:var(--g)">${R(recebidoMes)}</span></div><div class="ir"><span>Saídas do mês</span><span style="color:var(--r)">${R(saidasMes)}</span></div><hr class="divider" style="margin:.5rem 0"/><div class="ir"><span style="font-weight:500">Caixa do mês</span><span style="font-size:15px;color:${caixaMes>=0?'var(--g)':'var(--r)'};font-weight:500">${R(caixaMes)}</span></div><div class="ir" style="border:none"><span>Lucro das vendas (análise)</span><span style="color:var(--g)">${R(lucroMes)}</span></div>${notaRes}`;
   const pgtoB={pix:'bpix',credito:'bcred',debito:'bdeb',dinheiro:'bdin',parcelado:'bparc',fiado:'bfiad'};
   const ult=DB.vendas.filter(v=>!v.cancelada).slice(-5).reverse();

@@ -43,4 +43,25 @@ const rpcs = ["vsp_registrar_venda","vsp_registrar_compra","vsp_cancelar_venda",
 const faltam = rpcs.filter(r => !h.includes(r));
 console.log(faltam.length ? "RPC NAO CHAMADA: " + faltam.join(", ") : "RPCs: as 4 sao chamadas pelo app");
 
-process.exit(erros || ausentes.length || achados.length || semId.length || voltou.length || faltam.length ? 1 : 0);
+// 7) a Conta do Victor nao pode voltar a ser calculada por estoque
+//    A formula legada era: custo ja vendido + valor do estoque - pago a fornecedores.
+//    Qualquer reintroducao dela como fonte operacional reprova a build.
+const formulaLegada = [
+  'custoTot+valorEstTotal()',
+  'mercadoriaFornecida',
+  'faltaPagar',
+  "filter(s=>s.tipo==='fornecedor').reduce",
+];
+const legadoVoltou = formulaLegada.filter(t => h.includes(t));
+console.log(legadoVoltou.length
+  ? 'FORMULA LEGADA VOLTOU: ' + legadoVoltou.join(', ')
+  : 'LEDGER: ok, a divida com Victor nao e mais calculada por estoque');
+
+// e os consumidores precisam de fato ler o razao
+const consumidores = ['saldoVictor()', 'DB.ledger', 'v_ledger_victor', 'dashVictor', 'renderVictor'];
+const semLedger = consumidores.filter(t => !h.includes(t));
+console.log(semLedger.length
+  ? 'CONSUMIDOR NAO MIGRADO: ' + semLedger.join(', ')
+  : 'CONSUMIDORES: ok, Dashboard, Financeiro e extrato leem o ledger');
+
+process.exit(erros || ausentes.length || achados.length || semId.length || voltou.length || faltam.length || legadoVoltou.length || semLedger.length ? 1 : 0);
