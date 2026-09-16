@@ -135,6 +135,52 @@ de duplo clique.
 `test/estatico.js` falha se qualquer um deles voltar, e também se alguma das quatro RPCs
 deixar de ser chamada.
 
+## 005 — Auditoria de segurança das SECURITY DEFINER ✅
+
+Auditoria função por função das 5 RPCs.
+
+**O que já estava correto:**
+
+| Item | Resultado |
+|---|---|
+| `search_path` | `public, pg_temp` explícito nas 5 |
+| Dono | `postgres` |
+| `EXECUTE` | só `authenticated` e `service_role` |
+| `PUBLIC` | **sem permissão** |
+| `anon` | **sem permissão** |
+| Autorização interna | `vsp_autorizado()` em todas, por `auth.uid()` |
+| SQL dinâmico | nenhum nas RPCs de negócio |
+| Injeção por parâmetro | não há concatenação de SQL; tudo por bind |
+
+### 🔴 Vulnerabilidade encontrada e corrigida: impersonação do ator
+
+As RPCs gravavam o **nome do usuário enviado pelo frontend** — `p_venda->>'usuario'`,
+`p_rep->>'usuario'`, `p_usuario` — tanto em `vendas.usuario` e `vendas.cancelada_por`
+quanto em `audit_log.usuario`.
+
+**Explorável, e provado:** Stefany, autenticada com o token dela, enviou `usuario: 'Victor'`
+no payload. O banco gravou **"Victor"** na venda e na auditoria.
+
+Impacto: a auditoria existe para dar transparência entre os dois sócios, e qualquer um deles
+podia assinar no nome do outro. A atribuição "quem vendeu" do Fechamento também era forjável.
+
+**Correção:** função `vsp_ator()` (`stable security definer`, `search_path` fixo) que resolve
+o nome a partir de `auth.uid()` na allowlist. As 4 RPCs passaram a usá-la; o nome vindo do
+payload é **ignorado** — o parâmetro `p_usuario` continua na assinatura por compatibilidade,
+mas não tem efeito.
+
+**Prova depois da correção**, mesma transação revertida:
+
+> Sessão real = Stefany. Payload mandou Victor em tudo.
+> `[vendas.usuario=Stefany]` `[audit_log.usuario=Stefany]` `[cancelada_por=Stefany]`
+> **VEREDITO: BLOQUEADO em todos os 3 — a sessão manda**
+
+### Validações de entrada acrescentadas
+
+`tipo` fora de (`caixa`,`frasco`), `qtd <= 0` ou nula, `cust_unit <= 0`, `frete < 0`,
+`op_id` vazio, `id` nulo, produto inexistente — todas com mensagem clara e sem vazar
+estrutura interna.
+
 ## Números canônicos — reconferidos direto no banco após cada etapa
 
 | Indicador | Baseline | Depois de 001/002/003/004 |
