@@ -52,7 +52,7 @@
  *   estatico.test.js valida a sintaxe dos blocos ORIGINAIS, sem a linha.
  *
  * QUAL index.html?
- *   Ordem: env VSP_INDEX  >  copia canonica do OneDrive  >  ../index.html.
+ *   Ordem: env VSP_INDEX  >  ../index.html do repositorio  >  copia do OneDrive.
  *   O runner imprime no cabecalho qual arquivo foi carregado — nao confie no
  *   resultado sem ler essa linha, porque existem duas copias do app no disco.
  * ========================================================================== */
@@ -77,8 +77,10 @@ function resolverIndex(preferido) {
   const tentativas = [
     preferido,
     process.env.VSP_INDEX,
-    CAMINHO_CANONICO,
+    // O index.html do PROPRIO repositorio vem primeiro. Ele estava depois da copia do
+    // OneDrive, e a suite rodava contra o codigo antigo dando verde falso nas correcoes.
     CAMINHO_IRMAO,
+    CAMINHO_CANONICO,
   ].filter(Boolean);
   for (const t of tentativas) {
     try {

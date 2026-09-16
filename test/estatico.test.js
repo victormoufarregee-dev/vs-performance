@@ -224,12 +224,8 @@ describe('As correcoes de 15/09/2026 continuam no codigo', () => {
       'o comentario que explica a decisao continua ali');
   });
 
-  it.pendente(
+  it(
     'a ajuda embutida ainda fala da caixinha "ja paguei", que foi removida',
-    'as 4 mencoes a "ja paguei" (no tour, na ajuda de Compras, na ajuda de Saidas e ' +
-    'na nota do painel de compras do renderDash) precisam ser reescritas: hoje a compra ' +
-    'NUNCA lanca saida no Financeiro, ela vira divida com o Victor. O texto atual manda ' +
-    'o usuario procurar uma caixinha que nao existe mais.',
     () => {
       const ocorrencias = linhasCom(/paguei/i);
       assertEqual(ocorrencias.length, 0,

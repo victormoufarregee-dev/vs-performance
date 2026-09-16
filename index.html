@@ -892,7 +892,7 @@ const TOUR=[
   {ic:'ti-package',t:'2. Registrar uma compra',
    c:`<p>Aba <strong>Estoque &rarr; Nova compra</strong>. Informe quantidade, custo, frete e (recomendado) o lote e a validade.</p>
       <p class="ex">O custo m&eacute;dio do produto se ajusta sozinho misturando o estoque antigo com a compra nova. Voc&ecirc; nunca precisa recalcular nada.</p>
-      <p class="obs">Se voc&ecirc; deixar marcado "j&aacute; paguei", a sa&iacute;da do dinheiro tamb&eacute;m entra no Financeiro. Desmarque se for pagar depois.</p>`},
+      <p class="obs">A compra <strong>n&atilde;o</strong> lan&ccedil;a sa&iacute;da no Financeiro: quem banca a mercadoria &eacute; o V&iacute;ctor, ent&atilde;o ela vira d&iacute;vida da empresa com ele. O reembolso voc&ecirc; lan&ccedil;a em Financeiro como <em>Pagamento fornecedor</em>.</p>`},
   {ic:'ti-crystal-ball',t:'3. Saber quando comprar de novo',
    c:`<p>Ainda em <strong>Estoque</strong>, o quadro <strong>Previs&atilde;o</strong> olha quanto voc&ecirc; vendeu por dia e responde a pergunta que importa: quantos dias o estoque ainda dura e at&eacute; quando dá para pedir mais.</p>
       <p class="ex">Ele j&aacute; desconta o tempo que o fornecedor demora para entregar, e sugere a quantidade.</p>`},
@@ -987,7 +987,7 @@ const AJUDA={
        <p class="ex">Conta: valor da venda &minus; taxa do cart&atilde;o (quando voc&ecirc; paga a taxa). Fiado em aberto n&atilde;o entra.</p>`}),
   saidas:()=>({t:'Sa&iacute;das',
     c:`<p>Todo dinheiro que saiu no per&iacute;odo: pagamento de fornecedor, despesas, impostos, pr&oacute;-labore e retiradas de lucro.</p>
-       <p class="obs">Compras de estoque marcadas como "j&aacute; paguei" entram aqui automaticamente.</p>`}),
+       <p class="obs">Compra de estoque n&atilde;o entra aqui: ela vira d&iacute;vida com o V&iacute;ctor. O que entra &eacute; o reembolso, quando a empresa te paga.</p>`}),
   caixa:()=>({t:'Caixa do per&iacute;odo',
     c:`<p>O que sobrou de dinheiro de verdade no bolso.</p>
        <p class="ex">Conta: recebido &minus; sa&iacute;das.</p>
@@ -999,7 +999,7 @@ const AJUDA={
        <p class="ex">Hoje: ${f.length} conta(s) em aberto, somando <strong>${R(f.reduce((a,v)=>a+v.bruto,0))}</strong>.</p>`};},
   compras:()=>({t:'Compras de estoque',
     c:`<p>Quanto voc&ecirc; investiu em mercadoria no per&iacute;odo (as reposi&ccedil;&otilde;es lan&ccedil;adas em Estoque).</p>
-       <p class="obs">Se a compra foi marcada como "j&aacute; paguei", esse mesmo valor tamb&eacute;m aparece em Sa&iacute;das. N&atilde;o &eacute; erro: um mostra o que virou estoque, o outro o que saiu do caixa.</p>`}),
+       <p class="obs">Compra de estoque n&atilde;o aparece em Sa&iacute;das: o dinheiro foi do V&iacute;ctor, n&atilde;o do caixa da empresa. Ela aparece em <strong>Fornecedores</strong>, como d&iacute;vida, at&eacute; ser reembolsada.</p>`}),
   margem:()=>({t:'Margem',
     c:`<p>Quanto por cento do valor da venda vira lucro para voc&ecirc;.</p>
        <p class="ex">Conta: lucro &divide; valor vendido &times; 100. Vender a R$ 1.400 com custo de R$ 616 d&aacute; 56% de margem.</p>
@@ -1820,7 +1820,7 @@ function renderFin(){
   const body=document.getElementById('finBody'),empty=document.getElementById('finEmpty');
   if(!s.length){body.innerHTML='';empty.style.display='';}else{empty.style.display='none';
   body.innerHTML=s.map(x=>`<tr><td>${fmtD(x.data)}</td><td><span class="badge ${tipoBadge[x.tipo]||'bdin'}">${tipoMap[x.tipo]||x.tipo}</span></td><td>${['prolabore','retirada'].includes(x.tipo)?x.socio:'—'}</td><td>${x.desc}</td><td><span class="badge bdin">${x.pgto}</span></td><td style="font-weight:500;color:var(--r)">${R(x.val)}</td><td><button class="btn-d" onclick="delSaida(${x.id})"><i class="ti ti-trash"></i></button></td></tr>`).join('');}
-  ['Victor','Stefany'].forEach(so=>{const el=document.getElementById('socio'+so),itens=DB.saidas.filter(x=>['prolabore','retirada'].includes(x.tipo)&&(x.socio===so||x.socio==='Ambos')),tot2=itens.reduce((a,x)=>a+(x.socio==='Ambos'?x.val/2:x.val),0);el.innerHTML=itens.length?`<div class="ir"><span>Total retirado</span><span style="color:var(--r)">${R(tot2)}</span></div>${[...itens].slice(-3).reverse().map(x=>`<div class="ir"><span>${fmtD(x.data)} · ${x.desc}</span><span>${R(x.socio==='Ambos'?x.val/2:x.val)}</span></div>`).join('')}`:'<p style="font-size:12px;color:var(--sub)">Nenhuma retirada.</p>';});
+  ['Victor','Stefany'].forEach(so=>{const el=document.getElementById('socio'+so),itens=DB.saidas.filter(x=>['prolabore','retirada'].includes(x.tipo)&&(x.socio===so||x.socio==='Ambos')),pctSo=((DB.config&&DB.config['split_'+so.toLowerCase()]!=null)?+DB.config['split_'+so.toLowerCase()]:50)/100,tot2=itens.reduce((a,x)=>a+(x.socio==='Ambos'?x.val*pctSo:x.val),0);el.innerHTML=itens.length?`<div class="ir"><span>Total retirado</span><span style="color:var(--r)">${R(tot2)}</span></div>${[...itens].slice(-3).reverse().map(x=>`<div class="ir"><span>${fmtD(x.data)} · ${x.desc}</span><span>${R(x.socio==='Ambos'?x.val/2:x.val)}</span></div>`).join('')}`:'<p style="font-size:12px;color:var(--sub)">Nenhuma retirada.</p>';});
   const fb=document.getElementById('fornBody');
   if(fb){
     const mercadoriaFornecida=custoTot+valorEstTotal();
@@ -1927,7 +1927,7 @@ function renderDash(){
   document.getElementById('dashMet').innerHTML=`<div class="met"><div class="met-l">Receita no período ${iAjuda('receita')}</div><div class="met-v">${R(bruto)}</div><div class="met-s">${vendas.length} venda(s)</div></div><div class="met"><div class="met-l">Lucro das vendas ${iAjuda('lucro')}</div><div class="met-v" style="color:var(--g)">${R(lucro)}</div><div class="met-s">${bruto>0?(lucro/bruto*100).toFixed(1)+'% s/ receita':''}</div></div><div class="met"><div class="met-l">Recebido (caixa) ${iAjuda('recebido')}</div><div class="met-v" style="color:var(--bl)">${R(recebido)}</div></div><div class="met"><div class="met-l">Saídas no período ${iAjuda('saidas')}</div><div class="met-v" style="color:var(--r)">${R(saidasPeriodo)}</div></div><div class="met"><div class="met-l">Caixa do período ${iAjuda('caixa')}</div><div class="met-v" style="color:${caixaPeriodo>=0?'var(--g)':'var(--r)'}">${R(caixaPeriodo)}</div><div class="met-s">recebido − saídas</div></div><div class="met"><div class="met-l">A receber (fiado) ${iAjuda('fiado')}</div><div class="met-v" style="color:var(--am)">${R(fiadosAbertos)}</div></div><div class="met"><div class="met-l">Compras de estoque ${iAjuda('compras')}</div><div class="met-v" style="color:var(--pu)">${R(comprasPeriodo)}</div><div class="met-s">${repsPeriodo.length} compra(s) no período</div></div>`;
   function metaBar(val,meta){const p=meta>0?Math.min(100,Math.round(val/meta*100)):0;const cl=p<30?'empty':p<70?'low':'';return`<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span>${R(val)} de ${R(meta)}</span><span style="font-weight:500">${p}%</span></div><div class="meta-bar-wrap"><div class="meta-bar ${cl}" style="width:${p}%"></div></div><p style="font-size:10px;color:var(--sub);margin-top:4px">${p>=100?'✅ Meta atingida!':p>=70?'Quase lá!':'Faltam '+R(meta-val)}</p>`;}
   const notaC=document.getElementById('dashNotaCompras');
-  if(notaC)notaC.textContent=comprasPeriodo>0?('📦 As compras de estoque marcadas como "já paguei" também aparecem em Saídas — é o mesmo dinheiro, visto de dois ângulos (o que virou estoque × o que saiu do caixa).'):'';
+  if(notaC)notaC.textContent=comprasPeriodo>0?('📦 Compra de estoque não sai do caixa da empresa — quem banca é o Víctor. Ela vira dívida em Financeiro → Fornecedores até o reembolso.'):'';
   document.getElementById('dashMetaLucroMes').innerHTML=metaBar(lucroMes,META_LUCRO_MES);
   document.getElementById('dashMetaBrutoMes').innerHTML=metaBar(brutoMes,META_BRUTO_MES);
   document.getElementById('dashMetaLucroSem').innerHTML=metaBar(lucroSem,META_LUCRO_SEM);

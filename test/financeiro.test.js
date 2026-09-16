@@ -240,20 +240,18 @@ describe('Custo medio ponderado — confReposicao (regressao do arredondamento)'
     assertEqual(h.rede.chamadas.length, 0, 'nao chamou a rede');
   });
 
-  it('DOCUMENTADO: digitar "582,50" com virgula perde os centavos (parseFloat)', async () => {
-    const h = novo(F.dbEstoqueZero());
-    h.preencher(Object.assign({}, CAMPOS_COMPRA, { repQtd: '8', repCustUnit: '582,50' }));
-    await h.escopo.confReposicao();
-    const p = h.escopo.getProd('TG');
-    // parseFloat('582,50') === 582 -> a compra vira 8 x 582,00
-    assertClose(h.escopo.DB.reposicoes[0].custUnit, 582.00,
-      'com virgula o app le 582, nao 582,50');
-    assertClose(h.escopo.DB.reposicoes[0].custTotal, 4656.00,
-      '8 x 582,00 — quatro reais a menos que o real');
-    assertEqual(p.custoCaixa, 582.00, 'o custo medio herda o valor truncado');
-    // o campo do formulario e type=number no HTML, o que segura a maioria dos
-    // casos no navegador; o teclado do celular e o colar de texto, nao.
-  });
+  it(
+    'custo digitado com virgula ("582,50") deveria valer 582,50',
+    async () => {
+      const h = novo(F.dbEstoqueZero());
+      h.preencher(Object.assign({}, CAMPOS_COMPRA, { repQtd: '8', repCustUnit: '582,50' }));
+      await h.escopo.confReposicao();
+      assertClose(h.escopo.DB.reposicoes[0].custUnit, 582.50,
+        'o custo unitario digitado com virgula');
+      assertClose(h.escopo.DB.reposicoes[0].custTotal, 4660.00, 'o total da compra');
+      assertEqual(h.escopo.getProd('TG').custoCaixa, 582.50, 'o custo medio da caixa');
+    }
+  );
 });
 
 // =============================================================================
@@ -435,11 +433,8 @@ describe('Fechamento por socio x DRE do mesmo mes (item C1)', () => {
     assertClose(forn, 4356.00, 'e este o valor que hoje entra em dobro no resultado a dividir');
   });
 
-  it.pendente(
+  it(
     'C1 — o resultado a dividir nao deveria descontar o pagamento de fornecedor',
-    'resultado a dividir de 09/2026 = R$ 8.238,70 (= operacional do DRE), e nao R$ 3.882,70. ' +
-    'O custo da mercadoria ja foi descontado no lucro de cada venda; descontar o reembolso ' +
-    'ao fornecedor de novo tira o mesmo dinheiro duas vezes e reduz o direito dos dois socios.',
     () => {
       const h = novo(F.producao());
       const f = h.escopo.dadosFechamento('2026-09');
@@ -477,26 +472,39 @@ describe('Retirada do tipo "Ambos"', () => {
     });
   });
 
-  it('DOCUMENTADO: com split 60/40 o rateio da "Ambos" continua 50/50', () => {
+  it('o split configurado e lido corretamente para o DIREITO de cada socio', () => {
     const h = novo(F.dbSplit(60, 40, 1200.00));
     const f = h.escopo.dadosFechamento('2026-09');
     const victor = f.porSocio.find((x) => x.nome === 'Victor');
     const stefany = f.porSocio.find((x) => x.nome === 'Stefany');
-    assertEqual(victor.pct, 60, 'o split configurado e lido corretamente...');
-    assertEqual(stefany.pct, 40, '...para o direito de cada um');
-    // ...mas a retirada "Ambos" e dividida por 2 fixo (`metadeAmbos = soma / 2`)
-    assertClose(victor.retirado, 600.00, 'hoje Victor absorve metade, nao 60%');
-    assertClose(stefany.retirado, 600.00, 'hoje Stefany absorve metade, nao 40%');
-    // o saldo de cada um sai errado por causa disso
-    assertClose(victor.saldo, victor.direito - 600.00, 'saldo de Victor usa a metade fixa');
+    assertEqual(victor.pct, 60, 'porcentagem de Victor');
+    assertEqual(stefany.pct, 40, 'porcentagem de Stefany');
+    assertClose(victor.direito, f.resultado * 0.6, 'direito de Victor');
+    assertClose(stefany.direito, f.resultado * 0.4, 'direito de Stefany');
+    assertClose(victor.saldo, victor.direito - victor.retirado, 'saldo = direito - retirado');
   });
 
-  it.pendente(
+  it('o rateio da "Ambos" e o MESMO no dadosFechamento e no painel do renderFin', () => {
+    // a divisao da retirada conjunta esta escrita em dois lugares (dadosFechamento
+    // e o bloco "socioVictor/socioStefany" do renderFin). Se um for corrigido e o
+    // outro nao, o app mostra dois numeros diferentes para a mesma retirada.
+    // O fixture tem tudo no mesmo mes, senao a comparacao nao seria justa: o
+    // renderFin soma TODAS as retiradas, o dadosFechamento so as do mes.
+    const h = novo(F.dbSplit(60, 40, 1200.00));
+    const f = h.escopo.dadosFechamento('2026-09');
+    h.escopo.renderFin();
+    f.porSocio.forEach((x) => {
+      const painel = h.ui.html('socio' + x.nome);
+      const m = painel.match(/Total retirado<\/span><span[^>]*>R\$ (-?[\d]+\.\d{2})/);
+      assertTrue(!!m, 'nao achei o total retirado de ' + x.nome + ' no painel');
+      assertClose(Number(m[1]), x.retirado,
+        'renderFin e dadosFechamento discordam do retirado de ' + x.nome +
+        ' — a correcao do rateio "Ambos" entrou em um lugar so');
+    });
+  });
+
+  it(
     'A retirada "Ambos" deveria seguir o split configurado, nao 50/50 fixo',
-    'com split 60/40 e retirada conjunta de R$ 1.200,00: Victor retirado = R$ 720,00 e ' +
-    'Stefany = R$ 480,00. Hoje os dois ficam com R$ 600,00 (o codigo faz `soma / 2`). ' +
-    'A mesma divisao por 2 aparece no painel por socio do renderFin — os dois lugares ' +
-    'precisam mudar juntos.',
     () => {
       const h = novo(F.dbSplit(60, 40, 1200.00));
       const f = h.escopo.dadosFechamento('2026-09');
