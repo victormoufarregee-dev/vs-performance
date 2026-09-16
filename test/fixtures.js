@@ -58,7 +58,18 @@ const CANONICO = {
   valorEstoque: 4660.00,
   mercadoriaFornecida: 28199.30,
   pagoFornecedor: 22441.00,
+  // A divida vem do RAZAO (ledger_victor), nao mais de CMV + estoque - pago.
+  // Que o numero seja o mesmo da formula antiga e historia, nao definicao.
   dividaComVictor: 5758.30,
+  ledger: {
+    movimentos: 21,
+    saldoInicial: 9134.30,
+    compras: 19065.00,
+    comprasQtd: 5,
+    reembolsos: 22441.00,
+    reembolsosQtd: 15,
+    saldo: 5758.30,
+  },
   recebidoTotal: 51066.00,
   saidasTotais: 51069.49,
   resultadoCaixa: -3.49,
@@ -359,6 +370,186 @@ function reposicoesProducao() {
   ];
 }
 
+
+// ------------------------------------------------- razao da Conta do Victor ----
+/*
+ * O RAZAO (ledger_victor) — 21 movimentos, aplicado em producao em 16/09/2026.
+ *
+ * A divida da empresa com o Victor NAO se calcula mais a partir do estoque. Ela vive
+ * num razao proprio, onde cada linha e um FATO FINANCEIRO: compra que ele bancou
+ * (debito, aumenta a divida) ou reembolso que ele recebeu (credito, reduz).
+ * CONVENCAO UNICA: saldo positivo = a empresa DEVE ao Victor.
+ *
+ * AGREGADOS CANONICOS (conferidos no banco, ver migrations/APLICADO.md):
+ *   saldo inicial ...   1 movimento  R$  9.134,30  (debito)
+ *   compras .........   5 movimentos R$ 19.065,00  (debito)
+ *   reembolsos ......  15 movimentos R$ 22.441,00  (credito)
+ *   -------------------------------------------------------
+ *   saldo ...........  21 movimentos R$  5.758,30
+ *
+ * EXATO NO AGREGADO, SINTETICO NO DETALHE — a mesma regra do resto do arquivo:
+ *
+ *   - Os 5 debitos de compra sao EXATOS: cada um e o `custTotal` da reposicao de
+ *     mesmo id em reposicoesProducao(), e a origem aponta para ela. Somam 19.065,00.
+ *   - O saldo inicial e EXATO: 9.134,30, datado no dia anterior a 1a venda ativa
+ *     do fixture (02/06/2026), origem 'migracao'. E a parcela irreconstruivel —
+ *     dias de venda consumindo mercadoria comprada antes de existir registro.
+ *   - Os 15 reembolsos somam EXATAMENTE 22.441,00, mas as `saidas` do fixture
+ *     comprimem esses 15 pagamentos em 5 linhas do tipo 'fornecedor' (que tambem
+ *     somam 22.441,00). Por isso 5 movimentos apontam para as saidas 1001..1005 —
+ *     a coluna Origem mostra data e forma de pagamento, nunca valor — e os outros
+ *     10 entram como 'manual', que e um origem_tipo legitimo da tabela. Somente o
+ *     ultimo (4.356,00 em 15/09, o pagamento restaurado) casa valor E saida.
+ *   - Uma linha e explicitamente de AJUSTE (descricao marcada), como a do recebido
+ *     e a das saidas: ela absorve a diferenca ate o total canonico. Nenhum numero
+ *     foi encaixado as escondidas.
+ *
+ * IDS: o backfill grava saldo inicial, depois as compras, depois os reembolsos —
+ * entao id 1 = saldo inicial, 2..6 = compras, 7..21 = reembolsos. A VIEW ordena por
+ * (data, id), que NAO e a ordem dos ids. O array devolvido aqui esta na ordem da
+ * view, com `saldoCorrido` calculado nela — de proposito, para que um teste que
+ * confunda ordem de id com ordem cronologica falhe.
+ */
+const LEDGER_C = {
+  saldoInicial: 913430,
+  compras: 1906500,
+  reembolsos: 2244100,
+  saldo: 575830,
+};
+const LEDGER_CONT = { total: 21, saldoInicial: 1, compras: 5, reembolsos: 15 };
+
+const NOME_PROD = { TG: 'TG', RETA_VERDE: 'Reta Verde' };
+
+/** Um movimento no formato POS-mapLedger (do jeito que o DB.ledger do app fica). */
+function movLedger(over) {
+  return Object.assign({
+    id: 1,
+    data: '2026-09-15',
+    tipo: 'compra_financiada',
+    direcao: 'debito',
+    valor: 100.00,
+    descricao: 'Movimento de teste',
+    origemTipo: 'manual',
+    origemId: null,
+    estornaId: null,
+    estornadoEm: null,
+    criadoPor: 'Victor',
+    saldoCorrido: 100.00,
+  }, over || {});
+}
+
+/**
+ * Recalcula `saldoCorrido` como a view v_ledger_victor faz: soma corrida com sinal,
+ * na ordem (data, id). Devolve um array NOVO, ordenado.
+ */
+function comSaldoCorrido(movs) {
+  const ord = movs.slice().sort((a, b) => (
+    a.data < b.data ? -1 : a.data > b.data ? 1 : a.id - b.id));
+  let acumC = 0;
+  return ord.map((m) => {
+    acumC += Math.round(m.valor * 100) * (m.direcao === 'debito' ? 1 : -1);
+    return Object.assign({}, m, { saldoCorrido: cent(acumC) });
+  });
+}
+
+function ledgerProducao() {
+  // [data, tipo, direcao, valorCent, descricao, origemTipo, origemId]
+  const linhas = [];
+
+  linhas.push(['2026-06-01', 'saldo_inicial', 'debito', LEDGER_C.saldoInicial,
+    'Mercadoria financiada por Victor antes de as compras passarem a ser registradas ' +
+    '(vendas desde 2026-06-02, 1a compra registrada em 2026-07-12). Valor = mercadoria ' +
+    'que passou menos compras registradas. Nao reconstruivel movimento a movimento.',
+    'migracao', 0]);
+
+  reposicoesProducao().forEach((r) => {
+    linhas.push([r.data, 'compra_financiada', 'debito', Math.round(r.custTotal * 100),
+      'Compra de ' + (NOME_PROD[r.prod] || r.prod) + ' - ' + r.qtd + ' ' + r.tipo + '(s)' +
+      (r.forn ? ' - fornecedor ' + r.forn : ''),
+      'reposicao', r.id]);
+  });
+
+  // 5 reembolsos com origem nas saidas 'fornecedor' do fixture (data e pgto conferem)
+  const comSaida = [
+    ['2026-06-20', 300000, 1001, 'Reembolso a Victor - lote junho'],
+    ['2026-07-05', 300000, 1002, 'Reembolso a Victor - lote julho'],
+    ['2026-08-02', 280000, 1003, 'Reembolso a Victor - lote agosto'],
+    ['2026-08-28', 238500, 1004, 'Reembolso a Victor - complemento agosto'],
+    // o pagamento restaurado em 15/09/2026: casa valor E saida, ao centavo
+    ['2026-09-15', 435600, 1005, 'Reembolso a Victor - restaurado em 15/09'],
+  ];
+  comSaida.forEach((l) => {
+    linhas.push([l[0], 'reembolso', 'credito', l[1], l[3], 'saida', l[2]]);
+  });
+
+  // 10 reembolsos lancados direto no razao (origem 'manual'), 9 escolhidos a mao
+  const manuais = [
+    ['2026-06-28', 80000],
+    ['2026-07-18', 65000],
+    ['2026-07-30', 90000],
+    ['2026-08-09', 55000],
+    ['2026-08-15', 40000],
+    ['2026-08-22', 70000],
+    ['2026-09-03', 60000],
+    ['2026-09-06', 35000],
+    ['2026-09-12', 45000],
+  ];
+  manuais.forEach((l) => {
+    linhas.push([l[0], 'reembolso', 'credito', l[1], 'Reembolso parcial a Victor - pix',
+      'manual', null]);
+  });
+
+  // LINHA DE AJUSTE: fecha os 22.441,00 de reembolso da baseline.
+  const somaReemb = linhas
+    .filter((l) => l[1] === 'reembolso')
+    .reduce((a, l) => a + l[3], 0);
+  linhas.push(['2026-07-25', 'reembolso', 'credito', LEDGER_C.reembolsos - somaReemb,
+    'Reembolsos diversos acumulados (linha de ajuste do fixture)', 'manual', null]);
+
+  // ids na ordem do backfill (1 = saldo inicial, 2..6 compras, 7..21 reembolsos)
+  const movs = linhas.map((l, i) => movLedger({
+    id: i + 1,
+    data: l[0], tipo: l[1], direcao: l[2], valor: cent(l[3]), descricao: l[4],
+    origemTipo: l[5], origemId: l[6],
+    criadoPor: 'migracao',
+  }));
+  return comSaldoCorrido(movs);
+}
+
+/**
+ * Mesmo efeito de vsp_ledger_estornar_origem(): marca `estornadoEm` no movimento de
+ * uma origem e acrescenta o movimento compensatorio de sinal oposto. Nada e apagado —
+ * correcao em razao financeiro e por compensacao, nunca por delete.
+ */
+function ledgerComEstorno(movs, origemTipo, origemId, motivo, dataEstorno) {
+  const alvo = movs.find((m) => (
+    m.origemTipo === origemTipo && m.origemId === origemId && !m.estornadoEm));
+  if (!alvo) {
+    throw new Error('fixtures.js: nao ha movimento vivo para ' + origemTipo + ' #' + origemId);
+  }
+  const maxId = movs.reduce((a, m) => Math.max(a, m.id), 0);
+  const novos = movs.map((m) => (m === alvo
+    ? Object.assign({}, m, { estornadoEm: '2026-09-16T12:00:00.000Z' })
+    : Object.assign({}, m)));
+  novos.push(movLedger({
+    id: maxId + 1,
+    data: dataEstorno || '2026-09-16',
+    tipo: 'estorno',
+    direcao: alvo.direcao === 'debito' ? 'credito' : 'debito',
+    valor: alvo.valor,
+    descricao: 'Estorno do movimento #' + alvo.id + ' - ' + (motivo || 'sem motivo'),
+    origemTipo: 'manual',
+    origemId: null,
+    estornaId: alvo.id,
+    criadoPor: 'Victor',
+  }));
+  return comSaldoCorrido(novos);
+}
+
+/** Razao vazio: quem abre o app antes de a primeira sincronizacao terminar. */
+function ledgerVazio() { return []; }
+
+
 /**
  * Fixture "producao": reproduz os agregados canonicos da baseline.
  * Sempre devolve uma copia nova — pode mutar a vontade.
@@ -371,6 +562,7 @@ function producao() {
     saidas: saidasProducao(),
     reposicoes: reposicoesProducao(),
     auditLog: [],
+    ledger: ledgerProducao(),
     config: config(),
   };
   verificar(db); // nao deixa um fixture torto passar por baseline
@@ -564,6 +756,13 @@ function verificar(db) {
   const saidasTotais = db.saidas.reduce((a, s) => a + c(s.val), 0);
   const totalComprado = db.reposicoes.reduce((a, r) => a + c(r.custTotal), 0);
 
+  // O RAZAO. A divida com Victor sai daqui e de nenhum outro lugar. A soma com sinal
+  // (debito +, credito -) e a definicao do saldo; o resto do fixture nao opina.
+  const lg = Array.isArray(db.ledger) ? db.ledger : [];
+  const soma = (f) => lg.filter(f).reduce((a, m) => a + c(m.valor), 0);
+  const saldoRazao = lg.reduce(
+    (a, m) => a + c(m.valor) * (m.direcao === 'debito' ? 1 : -1), 0);
+
   const obtido = {
     'contagem produtos': db.produtos.length,
     'contagem vendas': db.vendas.length,
@@ -575,7 +774,13 @@ function verificar(db) {
     'custo ja vendido': custoJaVendido,
     'valor do estoque': valorEstoque,
     'pago a fornecedores': pagoFornecedor,
-    'divida com Victor': custoJaVendido + valorEstoque - pagoFornecedor,
+    'contagem movimentos do razao': lg.length,
+    'contagem compras no razao': lg.filter((m) => m.tipo === 'compra_financiada').length,
+    'contagem reembolsos no razao': lg.filter((m) => m.tipo === 'reembolso').length,
+    'saldo inicial do razao': soma((m) => m.tipo === 'saldo_inicial'),
+    'compras no razao': soma((m) => m.tipo === 'compra_financiada'),
+    'reembolsos no razao': soma((m) => m.tipo === 'reembolso'),
+    'divida com Victor (razao)': saldoRazao,
     'recebido total': recebido,
     'saidas totais': saidasTotais,
     'resultado de caixa': recebido - saidasTotais,
@@ -592,7 +797,13 @@ function verificar(db) {
     'custo ja vendido': C.custoJaVendido,
     'valor do estoque': C.valorEstoque,
     'pago a fornecedores': C.pagoFornecedor,
-    'divida com Victor': C.custoJaVendido + C.valorEstoque - C.pagoFornecedor,
+    'contagem movimentos do razao': LEDGER_CONT.total,
+    'contagem compras no razao': LEDGER_CONT.compras,
+    'contagem reembolsos no razao': LEDGER_CONT.reembolsos,
+    'saldo inicial do razao': LEDGER_C.saldoInicial,
+    'compras no razao': LEDGER_C.compras,
+    'reembolsos no razao': LEDGER_C.reembolsos,
+    'divida com Victor (razao)': LEDGER_C.saldo,
     'recebido total': C.recebidoTotal,
     'saidas totais': C.saidasTotais,
     'resultado de caixa': C.recebidoTotal - C.saidasTotais,
@@ -608,6 +819,27 @@ function verificar(db) {
       'centavos / unidades):\n' + erros.join('\n')
     );
   }
+  // sanidade do razao: o saldo corrido de cada linha e a soma com sinal ate ela,
+  // na ordem (data, id) — a mesma da view v_ledger_victor.
+  let acum = 0;
+  lg.forEach((m, i) => {
+    if (i > 0) {
+      const ant = lg[i - 1];
+      if (m.data < ant.data || (m.data === ant.data && m.id <= ant.id)) {
+        throw new Error('fixtures.js: razao fora da ordem (data, id) na linha ' + i);
+      }
+    }
+    if (!(m.valor > 0)) throw new Error('fixtures.js: movimento ' + m.id + ' com valor <= 0');
+    if (m.direcao !== 'debito' && m.direcao !== 'credito') {
+      throw new Error('fixtures.js: movimento ' + m.id + ' com direcao invalida');
+    }
+    acum += c(m.valor) * (m.direcao === 'debito' ? 1 : -1);
+    if (c(m.saldoCorrido) !== acum) {
+      throw new Error('fixtures.js: saldoCorrido errado no movimento ' + m.id +
+        ' (fixture=' + c(m.saldoCorrido) + ' esperado=' + acum + ')');
+    }
+  });
+
   // sanidade das linhas geradas
   db.vendas.forEach((v) => {
     if (!(v.bruto > v.custo)) {
@@ -629,6 +861,13 @@ module.exports = {
   dbEstorno,
   dbSplit,
   dbComTaxa,
+  ledgerProducao,
+  ledgerComEstorno,
+  ledgerVazio,
+  movLedger,
+  comSaldoCorrido,
+  LEDGER_C,
+  LEDGER_CONT,
   produtoTG,
   produtoReta,
   produtoTGZerado,

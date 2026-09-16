@@ -218,8 +218,7 @@ describe('As correcoes de 15/09/2026 continuam no codigo', () => {
     // A regra ("cada um arredondado uma vez, os dois a partir do valor nao arredondado")
     // mudou de arquivo junto com a conta. Se ela desaparecer da migration, o bug volta
     // — e nenhum teste do harness veria, porque o harness nao roda SQL.
-    const sql = fs.readFileSync(
-      path.join(__dirname, '..', 'migrations', '004_rpc_operacoes.sql'), 'utf8');
+    const sql = H.lerMigration('004_rpc_operacoes.sql');
     assertInclui(sql, 'v_cf := round(v_cf_raw, 2);',
       'o custo do frasco sai do valor nao arredondado');
     assertInclui(sql, 'v_cc := round(v_cf_raw * v_fpc, 2);',
@@ -259,6 +258,51 @@ describe('As correcoes de 15/09/2026 continuam no codigo', () => {
         'texto de ajuda desatualizado em:\n      ' + ocorrencias.join('\n      '));
     }
   );
+});
+
+// =============================================================================
+describe('O razao da Conta do Victor (migration 006)', () => {
+
+  it('a divida sai do razao, e o razao tem a convencao de sinal escrita', () => {
+    const sql = H.lerMigration('006_ledger_victor.sql');
+    assertInclui(sql, 'create table if not exists public.ledger_victor',
+      'a tabela do razao existe na migration');
+    assertInclui(sql, 'saldo POSITIVO = a empresa DEVE a Victor',
+      'a convencao de sinal esta escrita no arquivo, nao so na cabeca de alguem');
+    assertInclui(sql, "check (direcao in ('debito','credito'))",
+      'o banco nao aceita direcao inventada');
+    assertInclui(sql, 'check (valor > 0)', 'valor sempre positivo: o sinal e a direcao');
+    assertInclui(sql, "when direcao='debito' then valor else -valor end",
+      'o saldo e debito menos credito');
+  });
+
+  it('o razao nao se apaga: sem DELETE, correcao por compensacao', () => {
+    const sql = H.lerMigration('006_ledger_victor.sql');
+    assertNaoInclui(sql, 'for delete to authenticated',
+      'historico financeiro nao pode ter policy de DELETE');
+    assertInclui(sql, 'vsp_ledger_estornar_origem',
+      'a correcao e por movimento compensatorio');
+    assertInclui(sql, 'ux_lv_origem',
+      'identidade deterministica da origem: a mesma compra nao entra duas vezes');
+  });
+
+  it('quem escreve no razao e a SESSAO, nunca o nome vindo no payload', () => {
+    // Esta e a correcao 005 de migrations/APLICADO.md, provada explorando: com o
+    // token da Stefany, mandar usuario:'Victor' no payload fazia o banco gravar
+    // "Victor" na venda e na auditoria. vsp_ator() resolve o nome por auth.uid()
+    // na allowlist. O razao nasceu depois e tem de seguir a mesma regra.
+    const sql = H.lerMigration('006_ledger_victor.sql');
+    const usos = sql.split('public.vsp_ator()').length - 1;
+    assertTrue(usos >= 2,
+      'vsp_ator() tem de resolver o ator nas funcoes que escrevem no razao ' +
+      '(estorno e reembolso); achei ' + usos + ' uso(s)');
+    ["p_usuario", "p_created_by", "->>'usuario'", "->>'created_by'"].forEach((t) => {
+      assertNaoInclui(sql, t,
+        'o razao voltou a aceitar identidade pelo payload (' + t + ')');
+    });
+    assertInclui(sql, 'check (btrim(created_by) <> \'\')',
+      'e nenhuma linha do razao pode ficar sem autor');
+  });
 });
 
 // =============================================================================

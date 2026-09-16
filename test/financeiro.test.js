@@ -73,45 +73,77 @@ describe('REGRESSAO da baseline de 15/09/2026 — estes numeros NAO podem mudar'
     const r = financeiroRenderizado(h);
     assertClose(valorRotulado(r.met, 'Custo dos produtos vendidos'), 23539.30,
       'CMV no painel do Financeiro');
-    assertClose(valorRotulado(r.forn, 'Custo já vendido'), 23539.30,
-      'CMV no bloco de Fornecedores');
+    // O CMV saiu do card da Conta do Victor de proposito: ele e custo de mercadoria
+    // vendida, nao movimento financeiro entre a empresa e o socio.
+    assertEqual(CANONICO.custoJaVendido, 23539.30, 'a baseline do CMV mudou');
   });
 
-  it('mercadoria fornecida (vendida + estoque) = R$ 28.199,30', () => {
+  it('o card da Conta do Victor no Financeiro le o razao, nao o estoque', () => {
     const h = novo(F.producao());
     const r = financeiroRenderizado(h);
-    assertClose(valorRotulado(r.forn, 'Mercadoria fornecida'), 28199.30,
-      'mercadoria fornecida');
+    assertClose(valorRotulado(r.forn, 'Você financiou'), 28199.30,
+      'financiado = saldo inicial 9.134,30 + compras 19.065,00');
+    assertClose(valorRotulado(r.forn, 'Já recebeu de volta'), 22441.00,
+      'recebido de volta = os 15 reembolsos do razao');
+    assertClose(valorRotulado(r.forn, 'A empresa deve a você'), 5758.30,
+      'o saldo do card e o saldo do razao');
+    assertClose(h.escopo.saldoVictor(), 5758.30, 'e saldoVictor() concorda com a tela');
+  });
+
+  it('os rotulos da formula antiga nao voltaram ao card', () => {
+    // A divida era CMV + valor do estoque - pago a fornecedores. Se qualquer um
+    // destes rotulos reaparecer, a formula voltou por alguma porta.
+    const h = novo(F.producao());
+    const r = financeiroRenderizado(h);
+    ['Custo já vendido', 'Mercadoria fornecida', 'Já pago aos fornecedores',
+      'Falta pagar', 'Custo do estoque atual'].forEach((rot) => {
+      assertNaoInclui(r.forn, rot, 'rotulo da formula antiga de volta no card');
+    });
   });
 
   it('pago a fornecedores = R$ 22.441,00 (inclui os 4.356,00 restaurados em 15/09)', () => {
     const h = novo(F.producao());
     const r = financeiroRenderizado(h);
-    assertClose(valorRotulado(r.forn, 'Já pago aos fornecedores'), 22441.00,
-      'total pago a fornecedores');
+    // o total agora se le no razao, como credito, e nao mais somando saidas
+    assertClose(valorRotulado(r.forn, 'Já recebeu de volta'), 22441.00,
+      'total reembolsado a Victor');
     const restaurada = h.escopo.DB.saidas.find((s) => s.val === 4356.00);
     assertTrue(!!restaurada, 'o pagamento de 4.356,00 tem de estar no fixture');
     assertEqual(restaurada.tipo, 'fornecedor', 'tipo da saida restaurada');
     assertEqual(restaurada.socio, 'Victor', 'socio da saida restaurada');
     assertEqual(restaurada.data, '2026-09-15', 'data da saida restaurada');
+    // e o razao tem o movimento correspondente, apontando para essa saida
+    const mov = h.escopo.DB.ledger.find((m) => m.origemTipo === 'saida' && m.origemId === restaurada.id);
+    assertTrue(!!mov, 'o razao tem o credito da saida restaurada');
+    assertEqual(mov.direcao, 'credito', 'reembolso reduz a divida');
+    assertClose(mov.valor, 4356.00, 'valor do credito');
   });
 
   it('divida da empresa com Victor = R$ 5.758,30', () => {
     const h = novo(F.producao());
     const r = financeiroRenderizado(h);
-    assertClose(valorRotulado(r.forn, 'Falta pagar'), 5758.30,
-      '"falta pagar ao(s) fornecedor(es)" e a divida com Victor');
+    assertClose(valorRotulado(r.forn, 'A empresa deve a você'), 5758.30,
+      'a divida com Victor, lida do card do Financeiro');
+    assertEqual(CANONICO.dividaComVictor, 5758.30, 'a baseline da divida mudou');
   });
 
-  it('a divida segue a formula canonica: CMV + estoque - pago a fornecedor', () => {
+  it('a divida e a soma com sinal do razao — e NAO CMV + estoque - pago', () => {
     const h = novo(F.producao());
     const r = financeiroRenderizado(h);
-    const cmv = valorRotulado(r.forn, 'Custo já vendido');
-    const est = valorRotulado(r.forn, 'Custo do estoque atual');
-    const pago = valorRotulado(r.forn, 'Já pago aos fornecedores');
-    const divida = valorRotulado(r.forn, 'Falta pagar');
-    assertClose(cmv + est - pago, divida, 'a formula da divida mudou');
-    assertClose(est, h.escopo.valorEstTotal(), 'o estoque do bloco e o valorEstTotal()');
+    const financiou = valorRotulado(r.forn, 'Você financiou');
+    const recebeu = valorRotulado(r.forn, 'Já recebeu de volta');
+    const divida = valorRotulado(r.forn, 'A empresa deve a você');
+    assertClose(financiou - recebeu, divida, 'debitos - creditos = saldo');
+    assertClose(h.escopo.saldoVictor(), divida, 'saldoVictor() e a fonte do card');
+
+    // A prova de que a formula antiga nao e mais a fonte: mexer no estoque muda
+    // CMV + estoque - pago e NAO pode mexer no saldo.
+    const antigo = CANONICO.custoJaVendido + h.escopo.valorEstTotal() - 22441.00;
+    assertClose(antigo, divida, 'hoje os dois coincidem — e historia, nao definicao');
+    h.escopo.getProd('TG').caixas += 10;
+    assertClose(h.escopo.saldoVictor(), divida, 'estoque a mais nao pode mexer no saldo');
+    assertMaior(CANONICO.custoJaVendido + h.escopo.valorEstTotal() - 22441.00, antigo,
+      'a formula antiga teria subido — e a prova de que ela nao e mais usada');
   });
 
   it('resultado de caixa = -R$ 3,49 (recebido 51.066,00 - saidas 51.069,49)', () => {
@@ -130,13 +162,20 @@ describe('REGRESSAO da baseline de 15/09/2026 — estes numeros NAO podem mudar'
   });
 
   it('a diferenca conhecida mercadoria - comprado e R$ 9.134,30 (divida pre-registro)', () => {
+    // Era uma subtracao inferida (mercadoria fornecida - comprado). Agora ela e um
+    // MOVIMENTO EXPLICITO do razao: o saldo inicial, datado no dia anterior a 1a venda.
     const h = novo(F.producao());
-    const r = financeiroRenderizado(h);
-    const mercadoria = valorRotulado(r.forn, 'Mercadoria fornecida');
     const meses = ['2026-06', '2026-07', '2026-08', '2026-09'];
     const comprado = meses.reduce((a, m) => a + h.escopo.dadosDRE(m).compras, 0);
-    assertClose(mercadoria - comprado, CANONICO.diferencaExplicada,
+    const ini = h.escopo.DB.ledger.find((m) => m.tipo === 'saldo_inicial');
+    assertTrue(!!ini, 'o razao tem de ter o movimento de saldo inicial');
+    assertClose(ini.valor, CANONICO.diferencaExplicada,
       'a diferenca explicada da baseline mudou — reveja o BASELINE antes de "consertar"');
+    assertEqual(ini.direcao, 'debito', 'a parcela pre-registro aumenta a divida');
+    assertEqual(ini.origemTipo, 'migracao', 'ela vem da apuracao historica');
+    const r = financeiroRenderizado(h);
+    assertClose(valorRotulado(r.forn, 'Você financiou'), ini.valor + comprado,
+      'financiado = saldo inicial + tudo que foi comprado depois');
   });
 
   it('venda cancelada nao entra em nenhuma conta (o filtro !cancelada e real)', () => {

@@ -69,6 +69,10 @@ const vm = require('vm');
 const CAMINHO_CANONICO =
   'C:\\Users\\victo\\OneDrive\\VS Performance - 25 - JULHO - 2026\\index.html';
 const CAMINHO_IRMAO = path.join(__dirname, '..', 'index.html');
+// A pasta das migrations tambem e resolvivel por env: o test/mutantes.js roda a
+// suite contra uma COPIA do repositorio (index.html e/ou SQL mutados) e precisa
+// apontar as checagens de texto para essa copia, nunca para o arquivo real.
+const DIR_MIGRATIONS = path.join(__dirname, '..', 'migrations');
 
 const EPILOGO =
   '\n;globalThis.__vspEvals=(globalThis.__vspEvals||[]);' +
@@ -96,6 +100,20 @@ function resolverIndex(preferido) {
     'index.html nao encontrado. Tentei:\n  ' + tentativas.join('\n  ') +
     '\nDefina VSP_INDEX=<caminho> para apontar na mao.'
   );
+}
+
+/** Pasta das migrations sob teste. Ordem: VSP_MIGRATIONS > ../migrations. */
+function resolverMigrations(preferido) {
+  const tentativas = [preferido, process.env.VSP_MIGRATIONS, DIR_MIGRATIONS].filter(Boolean);
+  for (const t of tentativas) {
+    try { if (fs.statSync(t).isDirectory()) return t; } catch (e) { /* proxima */ }
+  }
+  throw new Error('pasta de migrations nao encontrada. Tentei:\n  ' + tentativas.join('\n  '));
+}
+
+/** Le uma migration pelo nome do arquivo, da pasta resolvida acima. */
+function lerMigration(nome, preferido) {
+  return fs.readFileSync(path.join(resolverMigrations(preferido), nome), 'utf8');
 }
 
 function infoArquivo(preferido) {
@@ -660,9 +678,12 @@ function carregar(opts) {
 module.exports = {
   carregar,
   resolverIndex,
+  resolverMigrations,
+  lerMigration,
   infoArquivo,
   extrairScripts,
   CAMINHO_CANONICO,
   CAMINHO_IRMAO,
+  DIR_MIGRATIONS,
   EPILOGO,
 };

@@ -1,5 +1,14 @@
 const fs = require('fs');
-const h = fs.readFileSync(require('path').join(__dirname,'..','index.html'), 'utf8');
+// VSP_INDEX permite apontar para uma copia mutada, para provar que estas checagens
+// realmente reprovam. Sem isso a trava seria intestavel.
+const path = require('path');
+const ALVO = process.env.VSP_INDEX || path.join(__dirname, '..', 'index.html');
+// VSP_MIGRATIONS faz o mesmo pela pasta das migrations: as checagens sobre o texto
+// do SQL tambem precisam poder rodar contra uma copia mutada, e nao so contra a real.
+const MIGRACOES = process.env.VSP_MIGRATIONS || path.join(__dirname, '..', 'migrations');
+const h = fs.readFileSync(ALVO, 'utf8');
+console.log('arquivo sob teste:', ALVO);
+console.log('migrations sob teste:', MIGRACOES);
 
 // 1) sintaxe de todos os blocos de script
 const blocos = [...h.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g)];
@@ -64,4 +73,20 @@ console.log(semLedger.length
   ? 'CONSUMIDOR NAO MIGRADO: ' + semLedger.join(', ')
   : 'CONSUMIDORES: ok, Dashboard, Financeiro e extrato leem o ledger');
 
-process.exit(erros || ausentes.length || achados.length || semId.length || voltou.length || faltam.length || legadoVoltou.length || semLedger.length ? 1 : 0);
+// 8) o razao nao pode voltar a confiar no nome que o frontend manda.
+//    A vulnerabilidade de 15/09/2026 (item 005 de migrations/APLICADO.md): as RPCs
+//    gravavam `p_usuario`/`usuario` do payload, e Stefany conseguiu assinar como
+//    Victor na venda E na auditoria. A correcao foi vsp_ator(), que resolve o nome
+//    a partir de auth.uid() na allowlist. O razao nasceu depois disso e tem de
+//    seguir a mesma regra: quem escreve no ledger e a SESSAO, nunca o payload.
+const sqlLedger = fs.readFileSync(path.join(MIGRACOES, '006_ledger_victor.sql'), 'utf8');
+const usosAtor = sqlLedger.split('public.vsp_ator()').length - 1;
+const confiaNoPayload = ["p_usuario", "p_created_by", "->>'usuario'", "->>'created_by'"]
+  .filter(t => sqlLedger.includes(t));
+const identidadeOk = usosAtor >= 2 && confiaNoPayload.length === 0;
+console.log(identidadeOk
+  ? 'IDENTIDADE DO RAZAO: ok, created_by vem de vsp_ator() (' + usosAtor + ' usos), nunca do payload'
+  : 'IDENTIDADE DO RAZAO VOLTOU AO PAYLOAD: vsp_ator() usado ' + usosAtor + 'x' +
+    (confiaNoPayload.length ? '; payload confiado em ' + confiaNoPayload.join(', ') : ''));
+
+process.exit(erros || !identidadeOk || ausentes.length || achados.length || semId.length || voltou.length || faltam.length || legadoVoltou.length || semLedger.length ? 1 : 0);

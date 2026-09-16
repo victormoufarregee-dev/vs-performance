@@ -2511,6 +2511,16 @@ async function confReposicao(){
   }
   confReposicao._emAndamento=false;confReposicao._op=null;
   if(res&&res.compra&&!DB.reposicoes.some(x=>x.id===res.compra.id))DB.reposicoes.push(mapRep(res.compra));
+  // adota o movimento do razao que a mesma transacao criou, senao o card do Financeiro e o
+  // do Dashboard ficam parados no saldo antigo ate a proxima sincronizacao
+  if(res&&res.movimento&&res.movimento.id){
+    if(!Array.isArray(DB.ledger))DB.ledger=[];
+    if(!DB.ledger.some(m=>m.id===res.movimento.id)){
+      const nm=mapLedger(res.movimento);
+      nm.saldoCorrido=saldoVictor()+(nm.direcao==='debito'?nm.valor:-nm.valor);
+      DB.ledger.push(nm);
+    }
+  }
   if(res&&res.produto){const pr=mapProd(res.produto);const alvo=getProd(pr.id);if(alvo)Object.assign(alvo,pr);}
   populateFornecedores();
   hideLoading();closeModal('repModal');['repCustUnit','repForn','repObs','repLote','repValidade','repNota','repFrete'].forEach(i=>{const e=document.getElementById(i);if(e)e.value='';});populateLotes();renderAll();
