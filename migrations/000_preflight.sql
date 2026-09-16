@@ -4,6 +4,13 @@
 -- SOMENTE LEITURA. Nao cria, nao altera e nao apaga nada.
 -- Rode ANTES de 001 / 002 / 003 / 004.
 --
+-- PRE-REQUISITO: o ATUALIZACAO_v4.sql tem de ja estar aplicado. Este
+-- arquivo le colunas que nasceram nele (produtos.preco_padrao,
+-- produtos.estoque_minimo, produtos.estoque_critico, reposicoes.frete,
+-- vendas.vence_em, config.split_victor, tabela backups). Se der erro
+-- "column ... does not exist", rode o ATUALIZACAO_v4.sql primeiro -
+-- ele e 100% aditivo e pode rodar de novo sem risco.
+--
 -- COMO RODAR NO SUPABASE:
 --   SQL Editor > New query > colar TODO este arquivo > Run.
 --   O editor mostra o resultado do ULTIMO comando; por isso o

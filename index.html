@@ -642,6 +642,7 @@ input,select,textarea{font-size:16px;padding:11px 12px}
 <div id="quitarModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'quitarModal')"><div class="modal"><h3>Quitar dívida</h3><input type="hidden" id="qVendaId"/><p style="font-size:13px;margin-bottom:1rem" id="qInfo"></p><div class="fg" style="margin-bottom:1rem"><label>Forma recebida</label><select id="qPgto"><option value="pix">Pix</option><option value="credito">Crédito</option><option value="debito">Débito</option><option value="dinheiro">Dinheiro</option></select></div><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn-s" onclick="closeModal('quitarModal')">Cancelar</button><button class="btn" onclick="confirmarQuitar()">Confirmar</button></div></div></div>
 <div id="cancelModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'cancelModal')"><div class="modal"><h3 style="color:var(--r)"><i class="ti ti-ban"></i> Cancelar venda</h3><input type="hidden" id="cancelVendaId"/><div id="cancelInfo" style="background:var(--secondary-bg);border-radius:8px;padding:10px 12px;font-size:12px;margin-bottom:1rem;line-height:1.7"></div><div class="fg" style="margin-bottom:1rem"><label>Motivo *</label><select id="cancelMotivo" style="margin-bottom:8px"><option value="">Selecione...</option><option value="Erro no lançamento">Erro no lançamento</option><option value="Cliente desistiu">Cliente desistiu</option><option value="Produto devolvido">Produto devolvido</option><option value="Duplicata acidental">Duplicata acidental</option><option value="Troca de forma de pagamento">Troca de forma de pagamento</option><option value="Outro">Outro</option></select><textarea id="cancelObs" placeholder="Detalhes (opcional)" style="resize:none;height:70px;font-size:12px"></textarea></div><div style="background:#FEEFEF;border:1px solid #F7C1C1;border-radius:8px;padding:8px 12px;font-size:11px;color:#7B1F1F;margin-bottom:1rem">⚠ Estoque restaurado automaticamente. Cancelamento registrado permanentemente.</div><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn-s" onclick="closeModal('cancelModal')">Voltar</button><button style="background:var(--r);color:#fff;border:none;padding:9px 18px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit" onclick="confirmarCancelamento()"><i class="ti ti-ban"></i> Confirmar cancelamento</button></div></div></div>
 <div id="reciboModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'reciboModal')"><div class="modal" style="max-width:400px"><h3>Nota de entrega</h3><div id="reciboBody"></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:1rem"><button class="btn-s" onclick="closeModal('reciboModal')">Fechar</button><button class="btn" onclick="imprimirRecibo()"><i class="ti ti-printer"></i> Imprimir</button></div></div></div>
+<div id="vencModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'vencModal')"><div class="modal"><h3><i class="ti ti-calendar"></i> Vencimento do fiado</h3><input type="hidden" id="vencVendaId"/><p id="vencInfo" style="font-size:12px;color:var(--sub);margin-bottom:1rem"></p><div class="fg" style="margin-bottom:1rem"><label>Data combinada com o cliente</label><input type="date" id="vencData"/></div><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn-s" onclick="closeModal('vencModal')">Cancelar</button><button class="btn" onclick="salvarVencimento()">Salvar</button></div></div></div>
 <datalist id="fornecedoresList"></datalist>
 <datalist id="lotesList"></datalist>
 <div id="tourModal" class="modal-ov" style="display:none"><div class="modal" style="max-width:470px"><h3 id="tourTit"></h3><div id="tourBody" class="ajuda-body" style="min-height:150px"></div><div style="display:flex;justify-content:space-between;align-items:center;margin-top:1rem;gap:8px;flex-wrap:wrap"><button class="btn-s" style="font-size:11px" onclick="fecharTour()">Pular</button><div id="tourPassos" style="display:flex;gap:5px;align-items:center"></div><div style="display:flex;gap:6px"><button class="btn-s" id="tourPrev" onclick="tourAndar(-1)"><i class="ti ti-arrow-left"></i></button><button class="btn" id="tourNext" onclick="tourAndar(1)"></button></div></div></div></div>
@@ -1257,7 +1258,7 @@ async function doLogout(){
   document.getElementById('lp').value='';document.getElementById('lu').value='';
 }
 function resetTimer(){clearTimeout(sessionTimer);sessionTimer=setTimeout(async()=>{await audit('SESSAO_EXPIRADA',`Sessão de ${currentUser} expirou`);showToast('Sessão expirada.','warn');setTimeout(doLogout,1500);},30*60*1e3);}
-document.addEventListener('click',()=>{if(loggedIn)resetTimer();});
+['click','touchstart','scroll','keydown'].forEach(ev=>document.addEventListener(ev,()=>{if(loggedIn)resetTimer();},{passive:true}));
 document.getElementById('lp').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 // mostra o botao de modo offline se ja existir copia local
 carregarFila();
@@ -1272,6 +1273,9 @@ registrarSW();
 // NAV
 // ============================================================
 function gp(id,btn){
+  // Trocar de aba mantinha a rolagem da aba anterior: você caía no meio da página
+  // e não via os Alertas Críticos, que ficam no topo.
+  try{window.scrollTo(0,0);}catch(e){}
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
   document.getElementById('p-'+id).classList.add('active');if(btn)btn.classList.add('active');
@@ -1619,7 +1623,10 @@ function clearAuditFilter(){['audUser','audAcao','audBusca'].forEach(id=>{const 
 // ============================================================
 function dlCSV(filename,header,rows){
   const all=[header,...rows];
-  const csv=all.map(r=>r.map(c=>`"${String(c==null?'':c).replace(/"/g,'""')}"`).join(';')).join('\r\n');
+  // Excel em pt-BR usa ; como separador e , como decimal. Com decimal em ponto, a coluna
+  // entrava como texto e nenhuma soma funcionava na planilha.
+  const ptbr=c=>(typeof c==='number'||/^-?\d+\.\d+$/.test(String(c)))?String(c).replace('.',','):String(c==null?'':c);
+  const csv=all.map(r=>r.map(c=>`"${ptbr(c).replace(/"/g,'""')}"`).join(';')).join('\r\n');
   const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;a.click();
   audit('EXPORTACAO',filename+' exportado por '+currentUser);showToast('Arquivo exportado: '+filename);
@@ -2393,15 +2400,24 @@ function renderFiado(){
     const msg=encodeURIComponent(`Ol\u00e1 ${v.cliente}, tudo bem? Passando para lembrar do valor de ${R(v.bruto)} referente \u00e0 compra de ${prodNome(v.prod)} do dia ${fmtD(v.data)}${semVenc?'':`, combinado para ${fmtD(venc)}`}.`+(cod?`\n\nSe ficar mais f\u00e1cil, segue o Pix (copia e cola):\n\n${cod}`:'')+`\n\nQualquer coisa me chama. Obrigado!`);
     return`<div class="fiado-row"><div><p style="font-size:14px;font-weight:500">${v.cliente} <span class="${cls}">${sit}</span></p><p style="font-size:12px;color:var(--sub)">${v.wpp} · ${prodNome(v.prod)} · ${tipoLabel(v.tipo)} x${v.qtd} · desde ${fmtD(v.data)} (${dias} dias) · vencimento ${fmtD(venc)}${semVenc?' <span style="color:var(--am)">(estimado)</span>':''}</p></div><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><p style="font-size:16px;font-weight:600;color:var(--r)">${R(v.bruto)}</p>${cod?`<button class="btn-s" style="font-size:11px;padding:6px 10px" onclick="abrirPix(${v.id})"><i class="ti ti-qrcode"></i> Pix</button>`:''}<a href="https://wa.me/55${wn}?text=${msg}" target="_blank" class="btn-wpp"><i class="ti ti-brand-whatsapp"></i> Cobrar</a><button class="btn-s" style="font-size:11px;padding:6px 10px" onclick="editarVencimento(${v.id})"><i class="ti ti-calendar"></i></button><button class="btn" onclick="abrirQuitar(${v.id})" style="padding:7px 14px;font-size:12px"><i class="ti ti-check"></i> Quitar</button></div></div>`;}).join('');
 }
-async function editarVencimento(id){
+// Antes isto era um prompt() pedindo a data digitada como AAAA-MM-DD. No iPhone abre teclado
+// de texto, sem calendario, e rejeita qualquer outro formato. Agora e um seletor de data.
+function editarVencimento(id){
   const v=DB.vendas.find(x=>x.id===id);if(!v)return;
-  const atual=v.venceEm||addDias(v.data,15);
-  const novo=prompt('Data de vencimento combinada com '+v.cliente+' (formato AAAA-MM-DD):',atual);
-  if(!novo||!/^\d{4}-\d{2}-\d{2}$/.test(novo)){if(novo)showToast('Data inv\u00e1lida. Use AAAA-MM-DD.','err');return;}
+  document.getElementById('vencVendaId').value=id;
+  document.getElementById('vencInfo').textContent=v.cliente+' \u2014 '+R(v.bruto)+' em aberto desde '+fmtD(v.data);
+  document.getElementById('vencData').value=v.venceEm||addDias(v.data,15);
+  document.getElementById('vencModal').style.display='flex';
+}
+async function salvarVencimento(){
+  const id=parseInt(document.getElementById('vencVendaId').value);
+  const novo=document.getElementById('vencData').value;
+  const v=DB.vendas.find(x=>x.id===id);if(!v)return;
+  if(!novo){showToast('Escolha a data de vencimento.','err');return;}
   showLoading('Salvando...');
-  try{await sbPatch('vendas',id,{vence_em:novo});v.venceEm=novo;await audit('QUITAR',`Vencimento do fiado de ${v.cliente} alterado para ${fmtD(novo)}`);}
-  catch(e){hideLoading();showToast('Erro ao salvar — '+(e.message||e),'err');return;}
-  hideLoading();renderFiado();renderAlertas();showToast('Vencimento atualizado!');
+  try{await sbPatch('vendas',id,{vence_em:novo});v.venceEm=novo;await audit('QUITAR','Vencimento do fiado de '+v.cliente+' alterado para '+fmtD(novo));}
+  catch(e){hideLoading();showToast('Erro ao salvar \u2014 '+(e.message||e),'err');return;}
+  hideLoading();closeModal('vencModal');renderFiado();renderAlertas();showToast('Vencimento atualizado!');
 }
 function abrirQuitar(id){const v=DB.vendas.find(x=>x.id===id);if(!v)return;document.getElementById('qVendaId').value=id;document.getElementById('qInfo').textContent=`${v.cliente} — ${R(v.bruto)} em aberto desde ${fmtD(v.data)}`;document.getElementById('quitarModal').style.display='flex';}
 async function confirmarQuitar(){
@@ -2433,7 +2449,7 @@ function renderHist(){
   if(!v.length){body.innerHTML='';empty.style.display='';return;}empty.style.display='none';
   body.innerHTML=v.map(x=>`<tr class="${x.cancelada?'cancelled':''}"><td>${fmtD(x.data)}</td><td>${x.cancelada?`<span class="badge bcan">CANCELADA</span>`:'<span class="badge bc">Ativa</span>'}</td><td>${prodNome(x.prod)}</td><td><span class="badge b${x.tipo==='caixa'?'c':'f'}">${tipoLabel(x.tipo)}</span></td><td>${x.qtd}</td><td>${x.cliente}</td><td style="color:var(--sub)">${x.wpp}</td><td><span class="badge ${pgtoB[x.pgto]||''}">${pgtoMap[x.pgto]||x.pgto}${x.parcelas?' '+x.parcelas+'x':''}${x.pgto==='fiado'&&x.quitado?' ✓':''}</span></td><td style="font-size:11px">${x.usuario||'<span style="color:var(--sub)">—</span>'}${x.lote?'<br/><span style="color:var(--sub);font-size:10px">lote '+x.lote+'</span>':''}</td><td>${R(x.bruto)}</td><td style="color:var(--sub)">${R(x.custo)}</td><td style="font-weight:500;color:${x.cancelada?'var(--r)':x.pgto==='fiado'&&!x.quitado?'var(--am)':'var(--g)'}">${x.cancelada?'—':R(x.pgto==='fiado'&&!x.quitado?x.bruto:x.lucroLiq)}</td><td>${x.cancelada?'—':x.pgto==='fiado'&&!x.quitado?'<span class="badge bfiad">Pendente</span>':mPill(margemPct(x.bruto,x.lucroLiq))}</td><td style="font-size:11px;color:var(--sub)">${x.obs||'—'}</td><td style="display:flex;gap:3px">${!x.cancelada?`<button class="btn-s" style="padding:4px 7px;font-size:11px" onclick="abrirRecibo(${x.id})"><i class="ti ti-file-text"></i></button><button class="btn-cancel" onclick="abrirCancelamento(${x.id})"><i class="ti ti-ban"></i></button>`:`<span style="font-size:10px;color:var(--r)">Por: ${x.canceladaPor||'—'}</span>`}</td></tr>`).join('');
 }
-function clearH(){['hCli','hDe','hAte'].forEach(id=>document.getElementById(id).value='');['hProd','hTipo','hPgto','hStatus'].forEach(id=>document.getElementById(id).value='');renderHist();}
+function clearH(){['hCli','hDe','hAte'].forEach(id=>document.getElementById(id).value='');['hProd','hTipo','hPgto','hStatus','hUser'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});renderHist();}
 
 // ============================================================
 // CLIENTES
