@@ -804,6 +804,29 @@ async function sbPost(table,body){
   if(!r.ok)throw await sbErro(r,'Gravacao em',table);
   return r.json();
 }
+// ============================================================
+// OPERACOES TRANSACIONAIS (fonte canonica)
+// Venda, compra, cancelamento e estorno NAO gravam mais tabela por tabela daqui.
+// Cada uma e uma funcao no banco que faz tudo de uma vez ou nada: grava o registro,
+// mexe no estoque com trava, recalcula custo e escreve a auditoria na mesma transacao.
+// Isso e o que impede venda gravada sem baixa de estoque, retry duplicando receita e
+// os dois venderem a mesma ultima unidade.
+// ============================================================
+// Identifica a OPERACAO, nao a linha: o mesmo op_id no retry faz o banco devolver o
+// que ja existe em vez de criar de novo.
+function novoOpId(){
+  try{ if(crypto&&crypto.randomUUID) return crypto.randomUUID(); }catch(e){}
+  return 'op-'+Date.now()+'-'+Math.random().toString(36).slice(2,10);
+}
+async function sbRpc(fn,params){
+  const r=await sbFetch(`${SB_URL}/rest/v1/rpc/${fn}`,{method:'POST',headers:{...H},body:JSON.stringify(params||{})});
+  if(!r.ok){
+    let msg='';
+    try{const j=await r.json();msg=j.message||j.hint||j.details||'';}catch(e){}
+    const e=new Error(msg||('falha em '+fn));e.status=r.status;e.rpc=fn;throw e;
+  }
+  return r.json();
+}
 async function sbPatch(table,id,body){
   const r=await sbFetch(`${SB_URL}/rest/v1/${table}?id=eq.${id}`,{method:'PATCH',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(body)});
   if(!r.ok)throw await sbErro(r,'Atualizacao em',table);
@@ -1514,31 +1537,36 @@ async function regVenda(){
       populateCliSelect();hideLoading();
     }
   }else{const c=DB.clientes.find(x=>x.id==ci);if(c){cn=c.nome;cw=c.tel;}}
-  // C7 — guarda o estoque antes de mexer, para conseguir desfazer se a gravação falhar.
-  const estAntes={caixas:p.caixas,frascos:p.frascos};
-  if(t==='caixa'){p.caixas-=q;}
-  else{let r=q;if(p.frascos>=r)p.frascos-=r;else{r-=p.frascos;p.frascos=0;const cx=Math.ceil(r/fpcOf(p));p.caixas-=cx;p.frascos=cx*fpcOf(p)-r;}}
   const b=q*vf,c=cuProd(p,t,q),tv=b*(tx/100),l=tq==='nos'?b-tv:b,ll=pg==='fiado'?0:l-c,mg=pg==='fiado'?0:margemPct(b,ll);
   const id=Date.now();
   const row={id,prod:p.id,tipo:t,qtd:q,val_orig:vo,desconto:dc,val_final:vf,bruto:b,custo:c,taxa:tx,taxa_val:tv,taxa_quem:tq,liq:l,lucro_liq:ll,margem:mg,cliente:cn,wpp:cw,cli_id:ci,data:dt,obs,pgto:pg,parcelas:pa,quitado:false,cancelada:false,vence_em:(pg==='fiado'?((document.getElementById('vVence')||{}).value||addDias(dt,15)):null),usuario:currentUser,lote:(document.getElementById('vLote')?document.getElementById('vLote').value.trim():'')};
+  // O mesmo op_id vale para esta venda inteira. Se a rede cair e o usuário repetir, ou se o
+  // botão for clicado duas vezes, o banco devolve a venda que já existe em vez de criar outra.
+  if(!regVenda._op)regVenda._op=novoOpId();
+  const opId=regVenda._op;
+  if(regVenda._emAndamento){showToast('Já estou salvando esta venda — aguarde.','warn');return;}
+  regVenda._emAndamento=true;
   showLoading('Salvando venda...');
+  let res;
   try{
-    await sbPost('vendas',row);
-    await sbPatch('produtos',p.id,{caixas:p.caixas,frascos:p.frascos});
-    DB.vendas.push(mapVenda(row));
-    await audit('VENDA',`${prodNome(p.id)} · ${cn} · ${tipoLabel(t)} x${q} · ${R(b)} · ${pg}`);
+    // Uma chamada só: grava a venda, baixa o estoque com trava e escreve a auditoria,
+    // tudo na mesma transação. O estoque local NÃO é mexido antes — quem manda é o banco.
+    res=await sbRpc('vsp_registrar_venda',{p_venda:row,p_op_id:opId});
   }catch(e){
-    // C7 — desfaz o estoque em memória, senão a tela passa a mostrar um número que o banco não tem
-    // e a próxima venda grava esse erro na nuvem de forma definitiva.
-    p.caixas=estAntes.caixas;p.frascos=estAntes.frascos;
-    hideLoading();renderAll();
-    // C3 — NÃO mandar "tente novamente": a venda pode ter sido gravada e a retentativa duplicaria.
-    showToast('A venda PODE ter sido salva. Toque em 🔄 e confira no Histórico ANTES de lançar de novo.','err');
+    regVenda._emAndamento=false;hideLoading();
+    showToast('Não consegui salvar: '+(e.message||e)+'. Nada foi gravado pela metade — pode tentar de novo.','err');
     try{await sincronizar();}catch(e2){}
     return;
   }
+  regVenda._emAndamento=false;regVenda._op=null;
+  // estado canônico devolvido pelo banco
+  if(res&&res.produto){const pr=mapProd(res.produto);const alvo=getProd(pr.id);if(alvo)Object.assign(alvo,pr);}
+  if(res&&res.venda){
+    const jaTinha=DB.vendas.some(v=>v.id===res.venda.id);
+    if(!jaTinha)DB.vendas.push(mapVenda(res.venda));
+  }
   hideLoading();
-  showToast(pg==='fiado'?'Venda fiado registrada!':'Venda registrada!');
+  showToast(res&&res.repetida?'Esta venda já estava salva — não lancei de novo.':(pg==='fiado'?'Venda fiado registrada!':'Venda registrada!'));
   document.getElementById('vCliSel').value='';document.getElementById('vCliNome').value='';document.getElementById('vCliWpp').value='';document.getElementById('newCliBox').style.display='block';document.getElementById('vObs').value='';document.getElementById('vQtd').value='1';document.getElementById('vValOrig').value='';document.getElementById('vDesc').value='0';document.getElementById('vTaxa').value='0';document.getElementById('vPgto').value='pix';document.getElementById('fiadoInfo').style.display='none';
   calcT();setToday();updateVF();renderAll();
 }
@@ -1559,40 +1587,24 @@ async function confirmarCancelamento(){
   if(!motivo){showToast('Selecione o motivo.','err');return;}
   if(!confirm('Confirmar o cancelamento desta venda? O estoque será restaurado e a ação ficará registrada na auditoria.'))return;
   const v=DB.vendas.find(x=>x.id===id);if(!v)return;
-  const motivoFinal=motivo+(obs?' — '+obs:'');const{display}=getNow();
+  const motivoFinal=motivo+(obs?' — '+obs:'');
   showLoading('Cancelando venda...');
-  const p=getProd(v.prod);
-  const estAntes=p?{caixas:p.caixas,frascos:p.frascos,custoCaixa:p.custoCaixa,custoFrasco:p.custoFrasco}:null;
-  if(p){
-    // M5 — a mercadoria volta pelo custo que ELA tinha na venda (v.custo), não pelo custo médio
-    // de hoje. Se o custo médio subiu desde então, devolver pelo valor atual criava dinheiro do
-    // nada: inflava o estoque e a dívida com o Victor. Aqui a conta fica exatamente neutra —
-    // o custo já vendido cai v.custo e o valor do estoque sobe v.custo.
-    const unAntes=totFP(p),valAntes=valorEstProd(p);
-    const unVolta=(v.tipo==='caixa')?v.qtd*fpcOf(p):v.qtd;
-    const valVolta=+v.custo||0;
-    if(v.tipo==='caixa')p.caixas+=v.qtd;
-    else{p.frascos+=v.qtd;const cx=Math.floor(p.frascos/fpcOf(p));p.caixas+=cx;p.frascos=p.frascos%fpcOf(p);}
-    const unDepois=unAntes+unVolta;
-    if(unDepois>0&&valVolta>0){
-      const raw=(valAntes+valVolta)/unDepois;
-      p.custoFrasco=+raw.toFixed(2);
-      p.custoCaixa=+(raw*fpcOf(p)).toFixed(2);
-    }
-  }
+  let res;
   try{
-    await sbPatch('vendas',id,{cancelada:true,cancelada_por:currentUser,cancelada_em:display,cancelada_motivo:motivoFinal});
-    if(p)await sbPatch('produtos',p.id,{caixas:p.caixas,frascos:p.frascos,custo_caixa:p.custoCaixa,custo_frasco:p.custoFrasco});
-    v.cancelada=true;v.canceladaPor=currentUser;v.canceladaEm=display;v.canceladaMotivo=motivoFinal;
-    await audit('CANCELAMENTO',`Venda de ${v.cliente} (${R(v.bruto)}) cancelada — Motivo: ${motivoFinal}`);
+    // M5 fica no banco: a mercadoria volta pelo custo histórico gravado na própria venda,
+    // não pelo custo médio de hoje. Marcar cancelada, devolver estoque, recalcular custo e
+    // auditar acontecem na mesma transação.
+    res=await sbRpc('vsp_cancelar_venda',{p_id:id,p_motivo:motivoFinal,p_usuario:currentUser,p_op_id:novoOpId()});
   }catch(e){
-    if(p&&estAntes){p.caixas=estAntes.caixas;p.frascos=estAntes.frascos;p.custoCaixa=estAntes.custoCaixa;p.custoFrasco=estAntes.custoFrasco;}
-    hideLoading();renderAll();
-    showToast('O cancelamento PODE ter sido salvo. Toque em 🔄 e confira antes de tentar de novo.','err');
+    hideLoading();
+    showToast('Não consegui cancelar: '+(e.message||e)+'. Nada foi alterado pela metade.','err');
     try{await sincronizar();}catch(e2){}
     return;
   }
-  hideLoading();closeModal('cancelModal');renderAll();showToast('Venda cancelada. Estoque restaurado.','warn');
+  if(res&&res.venda){const nv=mapVenda(res.venda);const alvo=DB.vendas.find(x=>x.id===nv.id);if(alvo)Object.assign(alvo,nv);}
+  if(res&&res.produto){const pr=mapProd(res.produto);const alvo=getProd(pr.id);if(alvo)Object.assign(alvo,pr);}
+  hideLoading();closeModal('cancelModal');renderAll();
+  showToast(res&&res.repetida?'Esta venda já estava cancelada.':'Venda cancelada. Estoque restaurado.','warn');
 }
 function renderCancelamentos(){
   const cans=DB.vendas.filter(v=>v.cancelada),totVal=cans.reduce((a,v)=>a+v.bruto,0);
@@ -2256,27 +2268,21 @@ async function estornarCompra(id){
     +`\nIsso não dá para desfazer.`;
   if(!confirm(aviso))return;
   showLoading('Estornando compra...');
-  const bkp={caixas:p.caixas,frascos:p.frascos,custoCaixa:p.custoCaixa,custoFrasco:p.custoFrasco};
+  let res;
   try{
-    if(r.tipo==='caixa')p.caixas-=r.qtd;else p.frascos-=r.qtd;
-    p.custoFrasco=novoCF;
-    p.custoCaixa=+(novoCFraw*fpcOf(p)).toFixed(2);
-    await sbDelete('reposicoes',r.id);
-    await sbPatch('produtos',p.id,{caixas:p.caixas,frascos:p.frascos,custo_caixa:p.custoCaixa,custo_frasco:p.custoFrasco});
-    DB.reposicoes=DB.reposicoes.filter(x=>x.id!==r.id);
-    await audit('REPOSICAO_ESTORNADA',`${prodNome(r.prod)} · ${r.qtd} ${rot}(s) · ${R(r.custTotal)}${r.forn?' · '+r.forn:''} — estornado por ${currentUser}`);
+    // Apagar a reposição, devolver o estoque, recalcular (ou preservar) o custo médio, remover a
+    // saída que a compra tenha criado e auditar — tudo numa transação só, no banco.
+    res=await sbRpc('vsp_estornar_compra',{p_id:r.id,p_usuario:currentUser,p_op_id:novoOpId()});
   }catch(e){
-    p.caixas=bkp.caixas;p.frascos=bkp.frascos;p.custoCaixa=bkp.custoCaixa;p.custoFrasco=bkp.custoFrasco;
-    hideLoading();showToast('Erro ao estornar — nada foi alterado. '+(e.message||e),'err');return;
+    hideLoading();showToast('Não consegui estornar: '+(e.message||e)+'. Nada foi alterado.','err');
+    try{await sincronizar();}catch(e2){}
+    return;
   }
-  if(sAuto){
-    try{
-      await sbDelete('saidas',sAuto.id);
-      DB.saidas=DB.saidas.filter(s=>s.id!==sAuto.id);
-      await audit('FINANCEIRO_EXCLUIDO',`${sAuto.desc} — ${R(sAuto.val)} excluído no estorno da compra por ${currentUser}`);
-    }catch(e2){showToast('Compra estornada, mas a saída no Financeiro não saiu — exclua à mão. '+(e2.message||e2),'warn');}
-  }
-  hideLoading();populateLotes();renderAll();showToast('Compra estornada. Estoque e custo médio voltaram ao que eram.');
+  DB.reposicoes=DB.reposicoes.filter(x=>x.id!==r.id);
+  if(sAuto)DB.saidas=DB.saidas.filter(s=>s.id!==sAuto.id);
+  if(res&&res.produto){const pr=mapProd(res.produto);const alvo=getProd(pr.id);if(alvo)Object.assign(alvo,pr);}
+  hideLoading();populateLotes();renderAll();
+  showToast(res&&res.repetida?'Esta compra já tinha sido estornada.':(res&&res.recalculou_custo?'Compra estornada. Estoque e custo médio voltaram ao que eram.':'Compra estornada. O custo médio foi mantido — houve venda depois desta compra.'));
 }
 function exportLotes(){
   dlCSV('vs_lotes_validade.csv',
@@ -2307,36 +2313,37 @@ async function confReposicao(){
   const jaExiste=DB.reposicoes.some(r=>r.prod===p.id&&r.tipo===t&&+r.qtd===q&&Math.abs((+r.custTotal||0)-q*cu)<1&&r.data===data);
   if(jaExiste&&!confirm('Já existe uma compra idêntica deste produto nesta mesma data.\n\nLançar mesmo assim?'))return;
   showLoading('Salvando compra...');
-  // CUSTO MÉDIO PONDERADO: combina o estoque atual com a nova compra (em frascos equivalentes)
-  const unidadesAntes=totFP(p);
-  // valor real do estoque (caixas×custo da caixa + frascos×custo do frasco), não o frasco arredondado
-  const valorAntes=valorEstProd(p);
-  const novasUnidades=(t==='caixa')?q*fpcOf(p):q;
+  // O custo médio ponderado é calculado NO BANCO, dentro da transação da compra, com a mesma
+  // fórmula que estava aqui. O app não mexe mais em estoque nem em custo por conta própria.
   const frete=valNum('repFrete')||0;
-  const valorNovo=q*cu+frete;   // frete entra no custo real da mercadoria
-  if(t==='caixa')p.caixas+=q;else p.frascos+=q;
-  const unidadesDepois=unidadesAntes+novasUnidades;
-  const novoCustoFrasco=unidadesDepois>0?(valorAntes+valorNovo)/unidadesDepois:((t==='caixa')?cu/fpcOf(p):cu);
-  p.custoFrasco=+novoCustoFrasco.toFixed(2);
-  // custo da caixa sai do valor SEM arredondar (senão o erro do frasco é multiplicado por fpc
-  // e o valor do estoque deixa de bater com o dinheiro realmente gasto)
-  p.custoCaixa=+(novoCustoFrasco*fpcOf(p)).toFixed(2);
   const id=Date.now();
   const total=q*cu+frete;
   const lote=(document.getElementById('repLote')||{}).value||'';
   const validade=(document.getElementById('repValidade')||{}).value||null;
   const nota=(document.getElementById('repNota')||{}).value||'';
-  const row={id,prod:p.id,tipo:t,qtd:q,cust_unit:cu,frete,cust_total:total,forn,data,obs,lote:lote.trim(),validade,nota_lote:nota.trim()};
+  const row={id,prod:p.id,tipo:t,qtd:q,cust_unit:cu,frete,cust_total:total,forn,data,obs,lote:lote.trim(),validade,nota_lote:nota.trim(),usuario:currentUser};
+  if(!confReposicao._op)confReposicao._op=novoOpId();
+  const opId=confReposicao._op;
+  if(confReposicao._emAndamento){showToast('Já estou salvando esta compra — aguarde.','warn');return;}
+  confReposicao._emAndamento=true;
+  let res;
   try{
-    await sbPost('reposicoes',row);
-    await sbPatch('produtos',p.id,{caixas:p.caixas,frascos:p.frascos,custo_caixa:p.custoCaixa,custo_frasco:p.custoFrasco});
-    DB.reposicoes.push(mapRep(row));populateFornecedores();
-    await audit('REPOSICAO',`${p.nome} · ${q} ${t==='caixa'?'caixa(s)':'frasco(s)'} · ${forn||'sem fornecedor'} · ${R(total)}`);
     // A compra NÃO lança saída no Financeiro: quem banca a mercadoria é o Victor, então ela
     // vira dívida da empresa com ele (aparece em Financeiro → Fornecedores). O reembolso é
     // lançado à mão como "Pagamento fornecedor" quando acontece.
-  }catch(e){hideLoading();showToast('Erro ao salvar a compra — '+(e.message||e),'err');return;}
-  hideLoading();closeModal('repModal');['repCustUnit','repForn','repObs','repLote','repValidade','repNota','repFrete'].forEach(i=>{const e=document.getElementById(i);if(e)e.value='';});populateLotes();renderAll();showToast('Compra registrada! Ela entrou como dívida da empresa com você.');
+    res=await sbRpc('vsp_registrar_compra',{p_rep:row,p_op_id:opId});
+  }catch(e){
+    confReposicao._emAndamento=false;hideLoading();
+    showToast('Não consegui salvar a compra: '+(e.message||e)+'. Nada foi gravado pela metade.','err');
+    try{await sincronizar();}catch(e2){}
+    return;
+  }
+  confReposicao._emAndamento=false;confReposicao._op=null;
+  if(res&&res.compra&&!DB.reposicoes.some(x=>x.id===res.compra.id))DB.reposicoes.push(mapRep(res.compra));
+  if(res&&res.produto){const pr=mapProd(res.produto);const alvo=getProd(pr.id);if(alvo)Object.assign(alvo,pr);}
+  populateFornecedores();
+  hideLoading();closeModal('repModal');['repCustUnit','repForn','repObs','repLote','repValidade','repNota','repFrete'].forEach(i=>{const e=document.getElementById(i);if(e)e.value='';});populateLotes();renderAll();
+  showToast(res&&res.repetida?'Esta compra já estava lançada — não repeti.':'Compra registrada! Ela entrou como dívida da empresa com você.');
 }
 
 // ============================================================

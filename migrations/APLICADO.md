@@ -66,27 +66,74 @@ dedicada por tabela e por comando:
 
 Login real dos dois donos confirmado funcionando após a troca.
 
-## 004 — Operações transacionais 🔄 em andamento
+## 004 — Operações transacionais ✅
 
-`vsp_registrar_venda(p_venda jsonb, p_op_id text)` ✅ criada e testada.
+Cinco funções `security definer` com `set search_path = public, pg_temp`, todas validando
+autorização pela allowlist, exigindo `op_id`, idempotentes, e gravando a auditoria dentro
+da própria transação:
 
-Grava a venda e baixa o estoque no mesmo statement. O decremento tem guarda no próprio
-`UPDATE` (`where caixas >= v_qtd`): sem saldo, nenhuma linha é afetada e a transação inteira
-é desfeita — duas sessões não conseguem vender a mesma última unidade. A auditoria é gravada
-pelo banco, dentro da transação, não por uma segunda chamada do frontend.
+| Função | O que faz numa transação só |
+|---|---|
+| `vsp_registrar_venda(jsonb, text)` | grava a venda + baixa o estoque com trava + audita |
+| `vsp_registrar_compra(jsonb, text)` | grava a reposição + soma estoque + recalcula custo médio + audita |
+| `vsp_cancelar_venda(bigint, text, text, text)` | marca cancelada + devolve estoque pelo **custo histórico da venda** + audita |
+| `vsp_estornar_compra(bigint, text, text)` | apaga a reposição + devolve estoque + preserva custo se houve venda depois + remove a saída ligada + audita |
+| `vsp_autorizado()` | allowlist de uid, usada por todas as policies e RPCs |
 
-**Testado em transação revertida:**
+O decremento de estoque tem a guarda no próprio `UPDATE` (`where caixas >= qtd`): sem saldo,
+nenhuma linha é afetada e a transação inteira é desfeita.
+
+### Teste de concorrência real
+
+Duas conexões independentes (duas abas do SQL Editor), produto isolado `ZZ_TESTE_CONC`.
+A conexão A trava a linha do produto e segura por 12 s dentro da mesma transação; a conexão B
+dispara no meio da janela — foi confirmado pelo carimbo de tempo que B partiu 8,7 s depois
+de A, com A ainda dentro da janela.
+
+**Cenário 1 — estoque inicial 1, Victor e Stefany disputando a última caixa:**
+
+| Verificação | Exigido | Obtido |
+|---|---|---|
+| Vendas criadas | 1 | **1** (Victor) |
+| Operações recusadas | 1 | **1** (Stefany — `estoque insuficiente`) |
+| Estoque final | 0 | **0** |
+| Estoque negativo | nenhum | **nenhum** |
+| Venda duplicada | nenhuma | **nenhuma** |
+| `op_id` duplicado | nenhum | **nenhum** |
+| Efeito financeiro duplicado | nenhum | **nenhum** |
+
+**Cenário 2 — estoque inicial 2, duas vendas simultâneas:**
+
+| Verificação | Exigido | Obtido |
+|---|---|---|
+| Vendas aprovadas | 2 | **2** |
+| Estoque final | 0 | **0** |
+| Comportamento de B | não pode ser recusada por engano | **esperou 4,8 s na trava e vendeu** |
+
+Cenário limpo depois: 0 produtos de teste, 0 vendas de teste, 0 linhas de auditoria de teste.
+
+### Outros testes da RPC (em transação revertida)
 
 | Caso | Resultado |
 |---|---|
-| 1ª venda, `op_id` novo | estoque 8 → 7 |
-| Retry com o **mesmo** `op_id` | `repetida=true`, 1 venda gravada, estoque continua 7 |
+| Venda normal | estoque 8 → 7 |
+| Retry com o mesmo `op_id` | `repetida=true`, 1 venda gravada, estoque não baixa de novo |
 | Venda de 999 caixas (há 8) | recusada, estoque intacto |
-| Chamada por usuário fora da allowlist | recusada |
-| Auditoria | gravada pelo servidor |
+| Chamada por usuário fora da allowlist | recusada (`nao autorizado`) |
+| Auditoria | gravada pelo servidor, dentro da transação |
 
-Pendentes: `vsp_registrar_compra`, `vsp_cancelar_venda`, `vsp_estornar_compra`, e o
-frontend passar a chamar as RPCs em vez de gravar em tabelas separadas.
+### Frontend migrado
+
+`regVenda`, `confReposicao`, `confirmarCancelamento` e `estornarCompra` passaram a chamar
+exclusivamente as RPCs via `sbRpc()`, com `op_id` gerado por `novoOpId()` e **reusado no
+retry** — é isso que faz o retry ser seguro. O app não mexe mais em estoque nem em custo
+por conta própria: adota o estado canônico devolvido pelo banco. Cada operação tem trava
+de duplo clique.
+
+**Caminho antigo removido**, não apenas desativado: não existe mais `sbPost('vendas')`,
+`sbPost('reposicoes')`, `sbDelete('reposicoes')` nem o patch de cancelamento no arquivo.
+`test/estatico.js` falha se qualquer um deles voltar, e também se alguma das quatro RPCs
+deixar de ser chamada.
 
 ## Números canônicos — reconferidos direto no banco após cada etapa
 
