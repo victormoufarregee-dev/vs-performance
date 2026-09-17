@@ -574,7 +574,11 @@ function preparar(m) {
 
   if (m.trocas) {
     const alvo = path.join(dir, m.arquivo.split('/').join(path.sep));
-    let texto = fs.readFileSync(alvo, 'utf8');
+    // LF sempre: no Windows o autocrlf do Git deixa CRLF na copia de trabalho, e um
+    // trecho escrito aqui com quebra de linha simples passaria a "aparecer 0x" —
+    // mutante NAO APLICADO, que e pior que mutante vivo: nao prova nada e nao
+    // chama atencao sozinho.
+    let texto = fs.readFileSync(alvo, 'utf8').replace(/\r\n/g, '\n');
     m.trocas.forEach(([de, para, vezes]) => {
       const achou = texto.split(de).length - 1;
       if (achou !== vezes) {
