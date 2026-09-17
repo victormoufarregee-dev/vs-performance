@@ -50,7 +50,7 @@ Documento anterior: `FECHAMENTO-VS-PERFORMANCE-ESTAVEL.md` (baseline) — este c
 | Estoque (`produtos`) | TG 8 cx / 0 fr (custo caixa 582,50 · frasco 145,63) · RETA_VERDE 0/0 |
 | Tabela legada `estoque` | 1 linha (2 cx / 3 fr) — não é a fonte do estoque |
 | Razão (`ledger_victor`) | 21 lançamentos |
-| Conferências de caixa | 0 |
+| Conferências de caixa | 0 — a primeira foi registrada no fim desta rodada (ver 10C) |
 | Auditoria | 264 linhas · última 17/09/2026 16:44:49 UTC |
 
 **md5 das tabelas (concatenação ordenada dos md5 de linha)**
@@ -363,8 +363,41 @@ aplicadas): função, esperado calculado no banco, diferença = real − esperad
 pelo trigger, invalidação, auditoria, fuso de São Paulo, venda e saída futuras fora do caixa de
 hoje, cartão recente, saldo inicial, idempotência por `op_id`, e o autor vindo da sessão.
 
-**Falta do Victor (humano):** o valor real. Quanto existe fisicamente e nas contas **agora**.
-Esse número não se inventa. Caixa esperado hoje: **−3,49**.
+**FEITA em 17/09/2026 17:47:11** (fuso de São Paulo), pelo Victor, no app. Conferência **82**:
+
+| campo | valor |
+|---|---|
+| escopo | consolidado |
+| saldo esperado (calculado pelo banco) | **−3,49** |
+| saldo real (contado pelo Victor) | **0,00** |
+| diferença (real − esperado) | **+3,49** — sobra |
+| observação | "Conta zerada" |
+| autor | Victor, resolvido por `vsp_ator()` — não veio do payload |
+| `op_id` | `af08773f-3597-4d64-b4f1-98bca5ee7066` |
+| situação | valida |
+
+Auditoria gravada na mesma transação (`audit_log` 1789678031161):
+*"Esperado -R$ 3,49 · real R$ 0,00 · diferença R$ 3,49 · Conta zerada · conferência 82"*.
+
+**O registro não corrigiu nada**, como projetado: o caixa esperado continua −3,49, e nenhuma
+venda, saída ou lançamento do razão mudou (65 vendas, 23 saídas, 21 movimentos do razão,
+iguais a antes). A auditoria foi de 264 para 267 linhas: dois LOGIN reais (Victor 17:35,
+Stefany 17:39) e a própria conferência.
+
+A foto 82 foi testada **depois** de gravada, em transação desfeita: **5 ok / 0 falhas** —
+`UPDATE` e `DELETE` recusados no SQL Editor (dono do banco) e pela API como Victor, e a linha
+segue intacta. É imutável de verdade, não por convenção.
+
+**De onde vem o −3,49:** saídas 51.069,49 − recebido líquido 51.066,00. Nenhuma venda tem
+centavos. Das 23 saídas, só três têm, e duas são pró-labore que se fecham em número redondo
+(5.062,50 + 5.062,50 = 10.125,00). **Os 49 centavos vêm de uma única linha:** a despesa de
+13/07, "Isopor + Gelinho = Victor comprou", de **R$ 105,49**. Os R$ 3,00 restantes são o
+saldo acumulado entre o que saiu e o que entrou.
+
+Caixa esperado negativo não existe fisicamente, então a leitura é: **saiu R$ 3,49 a mais do
+que o sistema viu entrar**, sobre mais de R$ 51 mil movimentados — resíduo, não vazamento.
+Fica registrado e documentado. A conferência **só verifica**: não criou lançamento de ajuste,
+e nenhum foi criado à mão.
 
 ### 10D. A venda de R$ 1,00 de 29/07 — investigada, nada alterado
 
@@ -432,7 +465,8 @@ auditoria 264 · última 2026-09-17T16:44:49.35Z   ← igual à de antes
 
 ## 13. Pendências humanas (só o que realmente exige o Victor)
 
-1. **Primeira Conferência de Caixa real** — informar quanto existe fisicamente e nas contas.
+1. ~~Primeira Conferência de Caixa real~~ — **feita em 17/09/2026** (conferência 82, diferença
+   +3,49; ver 10C). Resta decidir se investiga os R$ 3,49 ou se ficam como resíduo documentado.
 2. **Smoke de venda/cancelamento na UI**, com login real, refresh e reentrada.
 3. **Smoke offline em aparelho real**, com rede caindo de verdade (roteiro em `SMOKE_OFFLINE.md`).
 4. **Decidir sobre a venda de R$ 1,00 de 29/07** (seção 10D): confirmar que foi de propósito, ou
