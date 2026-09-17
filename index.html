@@ -1309,7 +1309,7 @@ function R(v){return'R$ '+Number(v||0).toFixed(2);}
 // Números em pt-BR: aceita "150,00", "150.00", "1.250,50" e "1250". Campos de dinheiro são
 // type="text" inputmode="decimal" justamente porque type="number" DESCARTA a vírgula: quem
 // digitava 150,00 ficava com o campo vazio e recebia "preencha os campos obrigatórios".
-function numBR(v){
+function numBR(v){console.log("quebra proposital do CI");
   if(typeof v==='number')return isFinite(v)?v:0;
   let s=String(v==null?'':v).trim();if(!s)return 0;
   s=s.replace(/[^\d.,-]/g,'');
