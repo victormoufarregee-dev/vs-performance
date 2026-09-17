@@ -454,3 +454,140 @@ idênticos (md5 das tabelas `25cdf18d22fa4d922da7f94bb23bc08b` antes e depois).
 
 Rollback: `grant execute on function public.vsp_ledger_backfill() to authenticated;` — só se um
 backfill novo for mesmo necessário, e revogar de novo depois.
+
+
+---
+
+## 010 — Grants mínimos por tabela ✅ (17/09/2026, 18:4x UTC)
+
+Segundo P2 estrutural do backlog: **a RLS protegia, o grant não**. `anon` e `authenticated`
+tinham `ALL` (SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER) em todas as
+tabelas de negócio — o padrão do Supabase, nunca revisto. Bastava uma policy escrita errado
+no futuro para o grant amplo virar buraco.
+
+**Como o alvo foi decidido** (não foi inventado): interseção entre
+(a) o que as policies da 003/006/007 permitem (`pg_policies`) e
+(b) o que o app realmente chama pelo PostgREST — auditado em `index.html`
+(`sbGet`/`sbPost`/`sbPatch`/`sbDelete` + a fila offline).
+
+| tabela | policy permite | app usa | grant depois da 010 |
+|---|---|---|---|
+| audit_log | S I | sbGet + sbPost | `SELECT, INSERT` |
+| backups | S I D | sbGet + sbPost + sbDelete | `SELECT, INSERT, DELETE` |
+| clientes | S I U | sbGet + sbPost + sbPatch | `SELECT, INSERT, UPDATE` |
+| conferencias_caixa | S | sbGet (grava por RPC) | `SELECT` |
+| config | S U | sbGet + sbPatch | `SELECT, UPDATE` |
+| estoque | S I U | só sbGet(id=eq.1) | `SELECT` |
+| ledger_victor | S I U | só leitura, pela view | `SELECT` |
+| produtos | S I U | sbGet + sbPost + sbPatch | `SELECT, INSERT, UPDATE` |
+| reposicoes | S I U D | sbGet + sbPatch(lote) | `SELECT, UPDATE` → `SELECT` na 011 |
+| saidas | S I U D | sbGet + sbPost + sbDelete | `SELECT, INSERT, DELETE` |
+| usuarios_autorizados | S | sbGet | `SELECT` |
+| vendas | S I U | sbGet + sbPatch | `SELECT, UPDATE` → `SELECT` na 011 |
+| v_ledger_victor | — (view) | sbGet | `SELECT` |
+
+`anon` fica com **zero** privilégio em tudo. Nenhuma policy foi removida: sem grant, o comando
+não chega na RLS. As RPCs são `SECURITY DEFINER` de `postgres` e passam por cima das duas
+coisas, então venda, compra, cancelamento, estorno, conferência e reembolso não são afetados.
+
+Também nesta migration:
+- `vsp_cc_protege()` era a **única** função `vsp_*` com o grant padrão de função (EXECUTE para
+  `PUBLIC`, e por tabela para `anon`). É trigger function e `SECURITY INVOKER` — chamada direta
+  só devolve "can only be called as a trigger" —, mas não havia motivo para ser executável pela
+  API. Revogada. O teste de segurança abria exceção para `returns trigger`; a exceção saiu junto.
+- `alter default privileges ... revoke all on tables from anon`: tabela nova criada por
+  `postgres` no schema `public` não nasce mais aberta para `anon`.
+
+**Ensaio antes de aplicar** (cada bloco numa transação que termina em exceção, nada gravado):
+`grants` 17/0 · segurança RLS 102/0 · operações e razão 34/0 · portas do app 49/0 ·
+extrato 9/0 · Conferência 35/0.
+
+**Aplicada.** Matriz lida de volta em produção bate linha a linha com a tabela acima; `anon`
+some de `information_schema.role_table_grants`.
+
+**Teste permanente novo:** `test/sql/grants.test.sql` (19/0 depois da 011) e a checagem
+`GRANTS` em `test/estatico.js`, que compara a foto de produção guardada em
+`test/sql/contrato_producao.json` com a matriz-alvo. Mutantes `GR-M1`, `GR-M2` e `GR-M3`.
+
+Rollback: no fim do arquivo `010_grants_minimos.sql`.
+
+
+---
+
+## 011 — Derivados financeiros calculados no banco ✅ (17/09/2026, 18:5x UTC)
+
+Terceiro P2 estrutural: **o banco aceitava qualquer número em dinheiro que o navegador
+mandasse**. `vsp_registrar_venda` gravava `val_final`, `bruto`, `custo`, `taxa_val`, `liq`,
+`lucro_liq` e `margem` exatamente como vinham no payload; conferia apenas quantidade, tipo,
+produto e estoque. A quitação de fiado era pior: `PATCH` direto em `vendas` mandando
+`lucro_liq`, `margem` e `quitado_em` calculados no cliente.
+
+A compra (`vsp_registrar_compra`, 006) já fazia certo desde sempre — ignora `cust_total` e usa
+`qtd*cust_unit + frete`. A 011 leva a venda para o mesmo padrão.
+
+**Regra:** fato vem do app (produto, tipo, qtd, val_orig, desconto, taxa, taxa_quem, pgto,
+cliente, data, obs, lote, vencimento). Derivado é do banco:
+
+```
+val_final = max(0, val_orig - desconto)
+bruto     = qtd * val_final
+custo     = qtd * custo do produto NO MOMENTO (linha travada) — nunca o payload
+taxa_val  = bruto * taxa/100
+liq       = taxa_quem='nos' ? bruto - taxa_val : bruto
+lucro_liq = pgto='fiado' ? 0 : liq - custo
+margem    = pgto='fiado' ? 0 : lucro_liq/bruto*100
+```
+
+Dinheiro em 2 casas, margem em 4.
+
+**Consistência:** derivado que depende só de fato (`val_final`, `bruto`, `taxa_val`, `liq`)
+divergindo mais de 1 centavo do calculado → venda **recusada**, com o nome do campo na
+mensagem. Derivado que depende do custo (`custo`, `lucro_liq`, `margem`) é só sobrescrito: o
+app pode ter o custo médio velho em cache, e isso é legítimo, não é ataque.
+
+**`vsp_quitar_fiado(p_id, p_pgto, p_op_id)`** — RPC nova, idempotente, `SECURITY DEFINER` com
+allowlist: recalcula o lucro pelo custo **histórico gravado na venda**, carimba `quitado_em` no
+fuso de São Paulo no formato que o app lê, e audita com `vsp_ator()`.
+
+**Grants por coluna:** fechada a quitação pela RPC, `authenticated` perde o `UPDATE` amplo —
+sobra `UPDATE (vence_em)` em `vendas` e `UPDATE (lote, validade, nota_lote)` em `reposicoes`.
+
+**Histórico:** nenhuma linha existente foi tocada. Conferência prévia nas 65 vendas de produção:
+`val_final`, `bruto`, `taxa_val`, `liq` e `lucro_liq` batem em **todas**; `custo` diverge em 63
+porque o custo médio do produto mudou desde a venda (é o custo histórico, está certo); `margem`
+diverge em 12 vendas antigas que gravaram *markup sobre o custo* em vez de *margem sobre a
+venda* (ex.: venda 1780949070694, bruto 1.400, lucro 790 → gravou 129,51% em vez de 56,43%).
+Nada disso foi reescrito — é história, não bug aberto.
+
+**Ensaio antes de aplicar:** `derivados` 30/0 · operações e razão 34/0 · grants 19/0 ·
+segurança RLS 102/0 · portas 49/0 · extrato 9/0 · Conferência 35/0.
+
+**Aplicada.** `vsp_registrar_venda` md5 `89848adfe8e50f52befdcdd98e62b572` (5656 bytes),
+`vsp_quitar_fiado` md5 `6ce93926feede5d0183c976d2ee89fd0` (2110 bytes) — iguais aos arquivos,
+sem `\r`.
+
+**Testes permanentes novos:** `test/sql/derivados.test.sql` (30 checagens no banco real, com
+adulteração de payload) · `test/derivados.test.js` (camada de chamada) · checagem
+`DINHEIRO DERIVADO` em `test/estatico.js` · mutantes `DV-M1`, `DV-M2`, `DV-M3`.
+
+Rollback: no fim do arquivo `011_derivados_no_banco.sql`.
+
+
+---
+
+## Histórico das migrations — o que existe e o que não existe (auditoria de 17/09/2026)
+
+Auditado nesta rodada, para fechar a dívida "migration history":
+
+- **Não existe `supabase_migrations.schema_migrations` neste projeto.** O schema não existe:
+  o banco nunca foi gerenciado pelo Supabase CLI. Todas as migrations 000–011 foram aplicadas
+  à mão pelo SQL Editor, na ordem, nas datas registradas neste arquivo.
+- Criar essa tabela agora e preenchê-la com timestamps retroativos seria **inventar histórico**.
+  Não foi feito.
+- A rastreabilidade real é outra, e é verificável por máquina: `test/sql/contrato_producao.json`
+  guarda md5/assinatura/`search_path`/EXECUTE das **23 funções** de produção e, desde a 010, a
+  **matriz de grants**. `node test/estatico.js` compara as migrations do repositório com essa
+  foto (checagens `CONTRATO DO BANCO`, `PERMISSOES` e `GRANTS`) e reprova na divergência.
+- Regra que continua valendo: ao mudar uma função no banco, mude o **arquivo** e **atualize a
+  foto**. Ensaie sempre numa transação que termina em exceção.
+- `migrations/historico/` guarda rascunho antigo que **não deve ser aplicado**.
