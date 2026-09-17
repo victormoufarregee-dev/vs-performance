@@ -11,11 +11,25 @@ node test/run.js financeiro       # só as suítes cujo arquivo casa com o filtr
 node test/run.js util estatico    # vários filtros
 node test/run.js --sem-cor        # sem ANSI (log, CI, redirecionamento)
 node test/run.js --cor            # força cor mesmo sem TTY
+
+node test/estatico.js             # as travas de texto, fora do runner (9 checagens)
+node test/mutantes.js             # provas de mutante: estraga o código e exige falha
+node test/mutantes.js M3 M5       # só esses mutantes
 ```
 
-São **125 casos** hoje: 32 no financeiro, 36 nas operações, 34 nos utilitários e 23
-estáticos. Sai com código **1** se algum caso falhar (ou se um arquivo de teste não
-carregar), e **0** quando está tudo verde. Testado no Windows 11 com Git Bash e Node 24.
+São **186 casos** hoje: 33 no financeiro, **56 no razão da Conta do Victor**, 36 nas
+operações, 34 nos utilitários e 26 estáticos. Sai com código **1** se algum caso falhar
+(ou se um arquivo de teste não carregar), e **0** quando está tudo verde. Hoje não há
+nenhum pendente: as duas divergências abertas em 16/09 foram corrigidas no mesmo
+dia. Testado no Windows 11 com Git Bash e Node 24.
+
+Três comandos, três perguntas diferentes:
+
+| comando | o que responde |
+|---|---|
+| `node test/run.js` | o código real do `index.html` produz os números certos? |
+| `node test/estatico.js` | o **texto** do arquivo (e das migrations) ainda respeita as travas? |
+| `node test/mutantes.js` | a suíte **pega** o erro que ela diz pegar, ou está verde olhando para o lado? |
 
 ## Leia isto antes de confiar no verde: metade do sistema não está em JavaScript
 
@@ -54,12 +68,12 @@ o texto do aviso de estorno e o mapeamento da resposta
 
 ## Qual `index.html` está sendo testado
 
-Existem **duas cópias do app no disco** e elas divergem:
+Existem **duas cópias do app no disco**, e nada garante que estejam iguais:
 
 | cópia | papel |
 |---|---|
 | `<repo>\index.html` (ao lado de `test/`) | cópia publicável, onde as correções C* entram — é o **alvo padrão** da suíte |
-| `C:\Users\victo\OneDrive\VS Performance - 25 - JULHO - 2026\index.html` | pasta de trabalho do OneDrive, hoje **atrás** do repositório |
+| `C:\Users\victo\OneDrive\VS Performance - 25 - JULHO - 2026\index.html` | pasta de trabalho do OneDrive, para onde a versão publicável é copiada |
 
 O runner **imprime no cabeçalho** qual arquivo abriu, com tamanho, número de linhas
 e data de alteração, e avisa em amarelo quando a outra cópia difere. Nunca leia o
@@ -75,23 +89,35 @@ A ordem de resolução é: `VSP_INDEX` → `../index.html` (o do repositório) �
 OneDrive. O repositório vem primeiro de propósito: ele é o que está sendo corrigido, e
 rodar contra a cópia velha do OneDrive dá **verde falso** nas correções.
 
-Rodando contra a cópia do OneDrive hoje, **37 casos falham**: ela é **anterior à
-migração** das quatro operações — não tem `sbRpc`, não chama nenhuma RPC e ainda calcula
-o custo médio no cliente. O `h.espiarRpc` detecta isso e falha com
-`este index.html nao tem sbRpc() — ele e ANTERIOR a migracao`, em vez de um erro
-obscuro. Isso é a suíte funcionando: ela sabe dizer qual cópia está velha.
+Em 16/09/2026 as duas cópias voltaram a ser **idênticas** (mesmo tamanho, mesmo
+conteúdo) e a suíte passa nas duas. O aviso amarelo continua valendo para o dia em que
+divergirem de novo — e o `h.espiarRpc` continua sabendo reconhecer uma cópia anterior à
+migração das quatro operações: ele falha com
+`este index.html nao tem sbRpc() — ele e ANTERIOR a migracao`, em vez de um erro obscuro.
+Isso é a suíte funcionando: ela sabe dizer qual cópia está velha.
 
 ## O que cada suíte cobre
 
-### `financeiro.test.js` — o dinheiro que ainda é calculado em JavaScript (32 casos)
+### `financeiro.test.js` — o dinheiro que ainda é calculado em JavaScript (33 casos)
 
 * **Regressão da baseline de 15/09/2026.** Com o fixture de produção, o código real
   tem de devolver: `valorEstTotal()` = **4.660,00**, custo já vendido = **23.539,30**,
-  mercadoria fornecida = **28.199,30**, pago a fornecedores = **22.441,00**,
+  você financiou = **28.199,30**, já recebeu de volta = **22.441,00**,
   dívida com Victor = **5.758,30**, recebido = **51.066,00**, saídas = **51.069,49**,
   resultado de caixa = **−3,49**, total comprado = **19.065,00** e a diferença
   explicada de **9.134,30**. Estes números não podem mudar sem uma decisão
   consciente — se mudarem, a suíte cai.
+* **Sete casos foram reescritos em 16/09/2026.** Eles raspavam os rótulos da fórmula
+  antiga no card do Financeiro — "Custo já vendido", "Mercadoria fornecida", "Já pago
+  aos fornecedores", "Falta pagar", "Custo do estoque atual". Esses rótulos não existem
+  mais: a dívida com o Victor **saiu do estoque** e virou razão. O card mostra hoje
+  "Você financiou", "Já recebeu de volta" e "A empresa deve a você", todos lidos de
+  `saldoVictor()`. Os números canônicos continuam os mesmos; a **fonte** mudou. Um dos
+  casos novos existe só para isso: exige que **nenhum** dos cinco rótulos antigos volte
+  ao card, e prova que a fórmula velha não é mais a fonte mexendo no estoque e
+  verificando que o saldo não se move. A diferença de **9.134,30**, que era uma
+  subtração inferida (mercadoria − comprado), agora é um **movimento explícito** do
+  razão: o saldo inicial, datado no dia anterior à 1ª venda.
   Como parte desses valores só existe dentro de `renderFin()`, o teste **lê o número
   do HTML que o próprio app escreveu** (o `R()` formata sempre `R$ 1234.50`, então a
   raspagem é estável). É o app calculando, não o teste.
@@ -123,6 +149,72 @@ que não devem voltar. Caso a caso, isto foi o destino de cada um:
 
 Nenhum desses casos foi transformado em "verde por construção": o que não podia ser
 provado sem banco foi **apagado do harness**, não afrouxado.
+
+### `ledger.test.js` — a Conta do Victor, lida do razão (56 casos)
+
+Até 15/09/2026 a dívida da empresa com o Victor era **derivada do estoque**:
+
+```
+dívida = CMV + valor do estoque − pago a fornecedores
+```
+
+Isso misturava dois conceitos que não têm relação. Quebrar um frasco, achar caixa
+sobrando no inventário ou corrigir um custo médio mexia numa dívida entre duas pessoas
+**sem que um centavo trocasse de mão**. Desde 16/09/2026 a dívida vem de um razão — a
+tabela `ledger_victor` — onde cada linha é um fato financeiro: compra que o Victor
+bancou (débito) ou reembolso que ele recebeu (crédito). O app carrega a view
+`v_ledger_victor` em `DB.ledger` e lê por `ledgerMovs()` / `saldoVictor()`.
+
+**Convenção única, válida em todo o sistema:** saldo **positivo** = a empresa **deve**
+ao Victor; débito aumenta a dívida, crédito reduz.
+
+* **O razão de produção, 21 movimentos.** 1 saldo inicial de **9.134,30** + 5 compras
+  somando **19.065,00** + 15 reembolsos somando **22.441,00** = saldo **5.758,30**. Os
+  casos conferem cada bloco, o `saldoVictor()`, o **saldo corrido linha a linha** (a soma
+  com sinal até cada movimento, na ordem `(data, id)` da view) e que os cinco débitos de
+  compra são, ao centavo, o `custTotal` da reposição de origem. A ordem dos ids do
+  backfill **não** é cronológica (id 1 = saldo inicial, 2..6 = compras, 7..21 =
+  reembolsos) e há um caso que exige que continue assim: se alguém trocar a ordenação
+  para id, o saldo corrido muda e a suíte grita.
+* **Compra.** Um movimento de compra sobe o saldo pelo valor exato; uma compra gera
+  **um** movimento, nunca dois (um caso conta os movimentos por origem); `confReposicao`
+  chama `vsp_registrar_compra` com `op_id` e **adota o movimento devolvido** pela mesma
+  transação, em vez de inventar o débito por conta própria.
+* **Reembolso.** Reduz o saldo pelo valor exato; reembolsar o saldo inteiro zera a conta
+  ao centavo; dois créditos seguidos não arredondam no meio.
+* **Estoque NÃO altera o razão — o bloco mais importante do arquivo.** Nove casos mexem
+  no estoque de todas as maneiras que a vida mexe (caixa a mais, quebra, estoque zerado,
+  custo médio alterado, uma venda com baixa de estoque e CMV, o cancelamento dessa
+  venda) e exigem que `saldoVictor()` **não mude um centavo**. Cada um desses casos
+  também prova que o cenário realmente mexeu no estoque — senão o teste estaria vazio.
+  Os dois cards e o extrato entram no mesmo bloco: nenhum deles pode reagir a estoque.
+* **Estorno.** Correção de razão financeiro é por **compensação**, nunca por `DELETE`: o
+  movimento original fica com `estornadoEm` preenchido e continua visível no extrato, e
+  um movimento de sinal oposto aparece apontando para ele (`estornaId`). O saldo depois
+  do estorno é o de antes de o movimento estornado existir. Apagar a compra do histórico
+  de estoque **não** apaga o razão: a coluna Origem passa a dizer "Compra #2005 (já
+  estornada)" em vez de quebrar.
+* **Extrato e filtros (`renderVictor`).** O topo mostra o saldo, o financiado, o recebido
+  e o saldo inicial; a tabela lista os 21 movimentos do mais recente para o mais antigo;
+  os filtros de período, tipo e origem funcionam e **se acumulam** (E, não OU). O caso
+  que mais importa: **o saldo do topo é o da conta inteira e nenhum filtro o muda** —
+  filtro é recorte de extrato, não de dívida, e cinco combinações são testadas uma a uma.
+  Há dois estados vazios **diferentes**: sem movimento nenhum ("toque em sincronizar") e
+  com filtro que não casa ("ajuste o período ou toque em Limpar"); no segundo o topo
+  continua mostrando o saldo, para não dar a impressão de que a conta zerou.
+* **`ledgerRotulo` traduz o enum.** Nenhum valor de máquina (`compra_financiada`,
+  `saldo_inicial`, `ajuste_financeiro`) pode chegar à tela, em nenhum dos quatro lugares
+  que renderizam o razão, nem ao CSV do `exportVictor` — e um tipo desconhecido cai no
+  próprio valor em vez de virar tela em branco.
+* **Cards do Financeiro e do Dashboard.** Os três lugares mostram o **mesmo** número; os
+  dois cards seguem qualquer razão (um razão de duas linhas inventadas tem de aparecer na
+  tela), o que é a prova de que não há número decorado; e com o razão vazio eles dizem
+  que não sabem, em vez de cair na fórmula antiga — que, com o fixture de produção, daria
+  **exatamente** os mesmos 5.758,30 e passaria batido.
+* **Defensivo.** `DB.ledger` indefinido, nulo, número, string ou objeto: `ledgerMovs()`
+  devolve `[]`, `saldoVictor()` devolve `0` (nunca `NaN`) e as três telas, o export e o
+  filtro rodam sem quebrar. É o caso de quem abre o app com um cache salvo antes desta
+  versão.
 
 ### `operacoes.test.js` — as quatro operações transacionais (36 casos)
 
@@ -189,7 +281,7 @@ O caso ponta-a-ponta (digitar `582,50` no campo de custo e o valor sair **inteir
 payload** da `vsp_registrar_compra`) está em `operacoes.test.js`. A prova acima é de
 linguagem e vale para sempre; a do app depende de o `numBR()` continuar no lugar.
 
-### `estatico.test.js` — o texto do arquivo (23 casos)
+### `estatico.test.js` — o texto do arquivo (26 casos)
 
 Não executa nada (fora o parse). Pega justamente o que o harness **não** pega:
 
@@ -198,8 +290,8 @@ Não executa nada (fora o parse). Pega justamente o que o harness **não** pega:
   do cdnjs;
 * nenhuma referência órfã a `repPagar`, `toggleRepPgto` ou `lancarFin`;
 * **toda** função chamada em `onclick=`/`onchange=`/`oninput=`/... existe de fato como
-  `function nome` ou `const/let/var nome` (103 nomes hoje);
-* **todo id usado em `getElementById('...')` existe no HTML** (244 ids hoje) e nenhum
+  `function nome` ou `const/let/var nome` (105 nomes hoje);
+* **todo id usado em `getElementById('...')` existe no HTML** (256 ids hoje) e nenhum
   id está duplicado — esta é a checagem que cobre o ponto cego do `document` falso;
 * nenhum `console.log` (nem `console.warn/error/...`), nenhum `debugger`, nenhum
   `alert('teste')`;
@@ -215,9 +307,72 @@ Não executa nada (fora o parse). Pega justamente o que o harness **não** pega:
 * a guarda `podeRecalcular` no estorno (que hoje só monta o **aviso** ao usuário: quem
   decide o custo é o banco), o botão de estorno ligado na interface e a compra sem saída
   automática;
+* **o razão da Conta do Victor, na `migrations/006_ledger_victor.sql`** (três casos
+  novos): a tabela existe, a convenção de sinal está **escrita no arquivo**, o banco não
+  aceita `direcao` inventada nem `valor <= 0`, não há policy de `DELETE` (histórico
+  financeiro não se apaga), a identidade determinística da origem (`ux_lv_origem`) impede
+  a mesma compra de entrar duas vezes, e — o mais importante — **quem escreve no razão é
+  a sessão, nunca o payload**: `vsp_ator()` (que resolve o nome por `auth.uid()` na
+  allowlist) tem de ser usado nas funções que escrevem, e `p_usuario` / `->>'usuario'`
+  não podem reaparecer. Foi exatamente essa a vulnerabilidade corrigida em 15/09/2026,
+  quando a Stefany conseguiu assinar uma venda e uma auditoria como "Victor" só mandando
+  o nome no payload;
 * higiene: doctype, título, charset, `APP_VERSION` declarada uma única vez, e a chave
   do Supabase no arquivo é a **anon** (o teste decodifica o JWT e confere `role`) —
   nunca a `service_role`.
+
+`test/estatico.js` é o mesmo espírito **fora do runner**: 9 checagens que imprimem uma
+linha cada e saem com código 1 na primeira reprovação. As duas últimas nasceram com o
+razão — a **fórmula legada** (`custoTot+valorEstTotal()`, `mercadoriaFornecida`,
+`faltaPagar`, `filter(s=>s.tipo==='fornecedor').reduce`) não pode voltar ao `index.html`,
+e a **identidade do razão** não pode voltar ao payload. Tanto ele quanto o
+`estatico.test.js` honram `VSP_INDEX` e `VSP_MIGRATIONS`, que é como o `test/mutantes.js`
+roda essas mesmas travas contra uma cópia mutada sem tocar nos arquivos reais.
+
+## Provas de mutante (`node test/mutantes.js`)
+
+Uma suíte verde não prova nada por si só: ela pode estar verde porque **não olha para o
+lugar certo**. Teste de mutante inverte o ônus da prova — estraga o código de propósito,
+do jeito que um programador distraído estragaria de verdade, e exige que **algum** caso
+falhe. Mutante que sobrevive é um buraco na suíte, e o script sai com código 1.
+
+Para cada mutante: cria uma pasta temporária, copia `index.html` e `migrations/` para
+dentro dela, aplica a mutação **na cópia**, roda `node test/run.js` e
+`node test/estatico.js` com `VSP_INDEX`/`VSP_MIGRATIONS` apontando para lá, lê a saída e
+apaga a pasta. **Nenhum arquivo do repositório é alterado** — o `index.html` real é aberto
+somente para leitura. Antes de tudo roda um **controle** (cópia sem mutação nenhuma): se o
+controle falha, o script para, porque aí um mutante "morto" poderia estar morrendo pelo
+motivo errado.
+
+Se o trecho a mutar não casar exatamente o número de vezes esperado, o script **não** diz
+"morto": ele diz `NAO APLICADO` e manda reescrever a mutação. Um mutante que nunca chegou
+a ser aplicado não prova nada.
+
+Resultado de 16/09/2026 — **8 mutantes, 8 mortos, 0 sobreviventes** (controle: 185 casos
+verdes):
+
+| mutante | arquivo mutado | o que muda | quem matou | resultado |
+|---|---|---|---|---|
+| **M1** | `index.html` | `confReposicao` para de adotar o movimento que a `vsp_registrar_compra` criou na mesma transação: a compra entra no estoque e o razão não registra o débito | `ledger.test.js` › "a compra traz o movimento do razão e o app adota o saldo novo" | **morto** |
+| **M1b** | `index.html` | `ledgerMovs()` filtra fora os movimentos de compra — mesmo efeito visível, atingindo todo mundo que lê o razão | `ledger.test.js` › "o razão tem 21 movimentos…" (+44 casos) | **morto** |
+| **M2** | `index.html` | `confReposicao` empurra o movimento devolvido **duas** vezes, com ids diferentes para escapar da guarda de duplicidade: a dívida sobe o dobro da compra | `ledger.test.js` › "a compra traz o movimento do razão e o app adota o saldo novo" | **morto** |
+| **M2b** | `index.html` | `ledgerMovs()` devolve as compras duplicadas — o retrato de um backfill rodado duas vezes sem o índice único de origem | `ledger.test.js` › "o razão tem 21 movimentos…" (+42 casos) | **morto** |
+| **M3** | `index.html` | sinal do crédito invertido em `saldoVictor()`: pagar o Victor passaria a **aumentar** a dívida com ele | `ledger.test.js` › "saldoVictor() = R$ 5.758,30 — e é débitos menos créditos" (+23 casos) | **morto** |
+| **M4** | `index.html` | `saldoVictor()` volta a somar o valor do estoque — quebra, perda e sobra de inventário voltariam a mexer na dívida com o sócio | `ledger.test.js` › "saldoVictor() = R$ 5.758,30…" (+27 casos) | **morto** |
+| **M5** | `index.html` | o card do Dashboard para de ler o razão e volta a derivar a dívida de `CMV + estoque − pago` | `ledger.test.js` › "os dois cards (Financeiro e Dashboard) também ignoram o estoque" **e** `estatico.js` › `FORMULA LEGADA VOLTOU` | **morto** |
+| **M6** | `migrations/006_ledger_victor.sql` | as funções do razão param de resolver o autor por `vsp_ator()` e passam a gravar o nome que o cliente mandar — a impersonação corrigida em 15/09 volta, agora no razão financeiro | `estatico.test.js` › "quem escreve no razão é a SESSÃO, nunca o nome vindo no payload" **e** `estatico.js` › `IDENTIDADE DO RAZAO VOLTOU AO PAYLOAD` | **morto** |
+
+Dois detalhes que valem registro:
+
+* **M5 é o mutante que justifica o fixture "razão inventado".** Com o fixture de produção,
+  a fórmula antiga dá **exatamente** os mesmos 5.758,30 — os dois cards mostrariam o número
+  certo pelo motivo errado e o mutante sobreviveria. O que o mata é o caso que carrega um
+  razão de duas linhas (1.000,00 de débito, 250,00 de crédito → saldo 750,00): aí os dois
+  números divergem e a fórmula velha aparece.
+* **M6 é o único que mora fora do `index.html`.** Ele existe porque o razão é escrito
+  dentro do PostgreSQL, e nenhum teste do harness veria essa regressão — o harness não roda
+  SQL. A trava é sobre o **texto** da migration, nos dois lugares (o caso do
+  `estatico.test.js` e a checagem 8 do `estatico.js`).
 
 ## Divergências documentadas (`it.pendente`)
 
@@ -227,6 +382,33 @@ registrada, com o valor certo escrito no relatório de toda rodada, e quando a c
 entra o runner grita `PENDENTE AGORA PASSA — remova o marcador`. É o contrário de
 esconder o problema. Use este marcador para a próxima divergência conhecida em vez de
 comentar o teste ou escrever o número errado como se fosse o certo.
+
+**Hoje não há nenhuma divergência aberta: 0 pendentes.** Os dois casos que nasceram
+pendentes junto com a suíte do razão, em 16/09/2026, foram corrigidos no mesmo dia. Ficam
+registrados aqui porque **os dois eram bugs reais que ninguém tinha visto**, e é o melhor
+argumento a favor de escrever o caso antes de ter a correção:
+
+1. **A compra não atualizava a Conta do Victor até alguém sincronizar.** A
+   `vsp_registrar_compra` insere o movimento `compra_financiada` na mesma transação, mas o
+   `confReposicao` só adotava `res.compra` e `res.produto` — o razão local ficava parado.
+   Você lançava uma compra de 4.660,00 e "A empresa deve a você" continuava mostrando o
+   saldo de antes, no Financeiro **e** no Dashboard. Corrigido: o `confReposicao` adota
+   `res.movimento`, com guarda de duplicidade pelo id. O caso virou
+   `ledger.test.js` › "a compra traz o movimento do razão e o app adota o saldo novo", e é
+   ele que mata o mutante **M1**.
+2. **O estorno descontava o valor duas vezes.** `vsp_ledger_estornar_origem` faz **duas**
+   coisas: insere um movimento de sinal oposto **e** marca `estornado_em` no original. Só
+   que `vsp_saldo_victor()` e a view `v_ledger_victor` filtravam
+   `where estornado_em is null` — e é essa view que o app carrega em `DB.ledger`. O valor
+   saía da conta uma vez por exclusão e outra pela compensação: estornar a compra de
+   **4.105,00** levaria o saldo de 5.758,30 para **−2.451,70** em vez de **1.653,30**, ou
+   seja, a tela diria que o **Victor** deve à empresa. Corrigido na migration: o saldo e a
+   view deixaram de filtrar `estornado_em` (o par soma zero, e o extrato passa a mostrar o
+   erro **e** a correção, que é o que se espera de um razão). O `where estornado_em is null`
+   continua onde faz sentido: dentro do laço que impede estornar duas vezes o mesmo
+   movimento.
+
+### Já fechadas antes (o ciclo completo do mecanismo)
 
 Os quatro casos abaixo **nasceram como `it.pendente`** contra a cópia do OneDrive e
 foram convertidos em `it()` normais quando as correções entraram no repositório — o
@@ -269,12 +451,33 @@ divergir, a suíte cai.
   centavos, e uma saída de "outros" em julho) — nenhum número foi encaixado às
   escondidas. `producao()` chama `verificar()` a cada chamada e **explode** se o
   fixture deixar de bater com a baseline.
+* **`ledgerProducao()`** — o razão da Conta do Victor, 21 movimentos, já dentro de
+  `producao()` como `DB.ledger`. Mesma regra: **exato no agregado, sintético no detalhe**.
+  Os 5 débitos de compra são exatos (cada um é o `custTotal` da reposição de mesmo id, e a
+  origem aponta para ela) e o saldo inicial é exato (**9.134,30**, origem `migracao`,
+  datado no dia anterior à 1ª venda ativa). Os 15 reembolsos somam exatamente
+  **22.441,00**, mas as `saidas` do fixture comprimem esses 15 pagamentos em 5 linhas do
+  tipo `fornecedor` — que também somam 22.441,00 —, então cinco movimentos apontam para
+  essas saídas (a coluna Origem mostra data e forma de pagamento, nunca valor) e os outros
+  dez entram como `manual`, que é um `origem_tipo` legítimo da tabela. Só o último
+  (**4.356,00** em 15/09, o pagamento restaurado) casa valor **e** saída. Uma linha é
+  rotulada no próprio dado como **linha de ajuste**.
+  `verificar()` recalcula o razão em centavos inteiros por conta própria e confere as
+  contagens, os três subtotais, o saldo, a ordem `(data, id)` e o `saldoCorrido` de **cada**
+  linha. A `divida com Victor` que ele checava pela fórmula antiga
+  (`CMV + estoque − pago`) foi substituída pelo `saldo do razão`: a coincidência entre os
+  dois números é história, não definição.
+  `ledgerComEstorno(movs, origemTipo, origemId, motivo)` faz o que a
+  `vsp_ledger_estornar_origem` faz: marca `estornadoEm` e acrescenta o movimento
+  compensatório. `movLedger(over)` monta um movimento solto e `ledgerVazio()` é o razão de
+  quem ainda não sincronizou.
 * **fixtures pequenos** — `dbEstoqueZero`, `dbEstorno('limpo'|'vendaDepois'|'insuficiente')`,
   `dbSplit(60,40)`, `dbComTaxa`, `dbMinimo` — números redondos, conferíveis de cabeça,
   um caso isolado cada.
 
-Os objetos estão no formato **pós-mapeamento** (`mapProd`/`mapVenda`/`mapSaida`/`mapRep`),
-igual ao que o `DB` do app fica depois do `loadAll()`.
+Os objetos estão no formato **pós-mapeamento**
+(`mapProd`/`mapVenda`/`mapSaida`/`mapRep`/`mapLedger`), igual ao que o `DB` do app fica
+depois do `loadAll()`.
 
 ## Como o harness funciona (e o que nele é falso)
 
@@ -324,7 +527,7 @@ propósito.
 
 ## O que esta suíte NÃO testa
 
-Não confunda 125 casos verdes com cobertura. Fica de fora, e **continua precisando de
+Não confunda 186 casos verdes com cobertura. Fica de fora, e **continua precisando de
 olho humano, de teste em SQL e de teste no app publicado**:
 
 * **A matemática do custo médio ponderado, a atomicidade e a idempotência de verdade.**
