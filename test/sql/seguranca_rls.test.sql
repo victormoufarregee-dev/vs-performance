@@ -83,17 +83,26 @@ begin
     insert into public.usuarios_autorizados (uid, nome, ativo) values (ui, 'Intruso', true);
     f := f || text 'Victor incluiu pela API';
   exception when insufficient_privilege then ok := ok + 1; end;
-  update public.usuarios_autorizados set ativo = not ativo where true;
-  get diagnostics n = row_count;
-  if n = 0 then ok := ok + 1; else f := f || ('Victor alterou ' || n || ' autorizados pela API'); end if;
-  delete from public.usuarios_autorizados where true;
-  get diagnostics n = row_count;
-  if n = 0 then ok := ok + 1; else f := f || ('Victor apagou ' || n || ' autorizados pela API'); end if;
+  -- desde a 010 o grant de authenticated em usuarios_autorizados e so SELECT: o UPDATE/DELETE
+  -- para antes da RLS, com insufficient_privilege. Antes ele passava e afetava 0 linhas.
+  -- As duas respostas provam a mesma coisa: pela API ninguem mexe na allowlist.
+  begin
+    update public.usuarios_autorizados set ativo = not ativo where true;
+    get diagnostics n = row_count;
+    if n = 0 then ok := ok + 1; else f := f || ('Victor alterou ' || n || ' autorizados pela API'); end if;
+  exception when insufficient_privilege then ok := ok + 1; end;
+  begin
+    delete from public.usuarios_autorizados where true;
+    get diagnostics n = row_count;
+    if n = 0 then ok := ok + 1; else f := f || ('Victor apagou ' || n || ' autorizados pela API'); end if;
+  exception when insufficient_privilege then ok := ok + 1; end;
   execute 'reset role';
 
-  -- funções: nenhuma vsp_* executável por anon (exceto trigger), e contas de auth existentes
+  -- funções: NENHUMA vsp_* executável por anon — nem as trigger functions. Até a 010,
+  -- vsp_cc_protege() tinha o EXECUTE padrão para PUBLIC e esta checagem abria exceção para
+  -- "returns trigger"; a exceção saiu junto com o grant.
   select count(*) into n from pg_proc p join pg_namespace s on s.oid = p.pronamespace
-   where s.nspname = 'public' and p.proname like 'vsp%' and pg_get_function_result(p.oid) <> 'trigger'
+   where s.nspname = 'public' and p.proname like 'vsp%' 
      and has_function_privilege('anon', p.oid, 'execute');
   if n = 0 then ok := ok + 1; else f := f || (n || ' funcoes vsp executaveis por anon'); end if;
 
