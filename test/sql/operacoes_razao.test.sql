@@ -131,9 +131,12 @@ begin
   r := public.vsp_registrar_venda(jsonb_set(jsonb_set(jsonb_set(v_venda, '{id}', to_jsonb(id_venda_fut)), '{data}', to_jsonb(hoje + 10)), '{cliente}', '"TESTE FUTURA"'), 'aud-venda-fut');
   if public.vsp_caixa_esperado() = caixa0 then ok := ok + 1;
   else f := f || ('O11b VENDA FUTURA ENTROU NO CAIXA DE HOJE: ' || caixa0 || ' -> ' || public.vsp_caixa_esperado()); end if;
+  -- O11c e sobre a FORMULA do caixa, nao sobre permissao: desde a 010 authenticated nao
+  -- tem UPDATE em saidas (o app nunca edita saida — ele apaga e relanca), entao a data e
+  -- movida como dono do banco.
+  execute 'reset role';
   update public.saidas set data = hoje where id = id_fut;
   if public.vsp_caixa_esperado() = caixa0 - 77 then ok := ok + 1; else f := f || ('O11c saida de hoje nao entrou: ' || public.vsp_caixa_esperado()); end if;
-  execute 'reset role';
 
   -- ================================================================ Stefany
   perform set_config('request.jwt.claims', json_build_object('sub', us, 'role', 'authenticated')::text, true);
