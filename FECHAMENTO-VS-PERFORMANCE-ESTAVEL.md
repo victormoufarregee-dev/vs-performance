@@ -183,3 +183,134 @@ Risco conhecido (em `OFFLINE_FILA.md`): sessão só em memória; Safari/iOS não
 | Troca | baixa/média | estoque de dois produtos numa operação | médio/alto | baixa |
 | Contas a pagar | média (hoje só o que já foi pago) | caixa futuro, fornecedores | médio: não pode entrar no caixa esperado | média |
 | Backup/restore no app | baixa (Supabase diário já recupera) | recuperação parcial por tabela | alto: restaurar por cima de dado vivo corrompe | baixa |
+
+
+---
+
+# Hardening pós-baseline (17/09/2026)
+
+Rodada curta de engenharia/segurança sobre o baseline `757e559`. Nenhuma funcionalidade nova,
+nenhum dado real criado, apagado ou ajustado. Canônicos idênticos antes e depois
+(md5 das tabelas `25cdf18d22fa4d922da7f94bb23bc08b`).
+
+## CI automático (GitHub Actions)
+
+`.github/workflows/testes.yml` — roda em push e pull request para `main` (e sob demanda).
+`permissions: contents: read`, sem segredo, sem credencial do Supabase, sem OneDrive: testa só
+o que está versionado. Passos: `node test/run.js` → `node test/estatico.js` →
+`node test/mutantes.js`, sem `continue-on-error`.
+
+* **Verde provado:** run [35253852747](https://github.com/victormoufarregee-dev/vs-performance/actions/runs/35253852747)
+  — 1m08, suíte 266/266, estáticos ok, mutantes 35/35 (na data do commit do workflow).
+* **Vermelho provado:** run [35254067083](https://github.com/victormoufarregee-dev/vs-performance/actions/runs/35254067083)
+  — branch temporária `ci-prova-vermelho` com o sinal do crédito invertido em `saldoVictor()`:
+  a suíte falhou, o job ficou vermelho e os passos seguintes nem rodaram. A branch foi apagada;
+  a `main` nunca recebeu a sabotagem.
+
+## Proteção da `main`
+
+Branch protection aplicada **depois** do primeiro CI verde: `allow_force_pushes: false`,
+`allow_deletions: false`, `enforce_admins: true` (vale também para o dono — é ele quem mais
+corre risco de apagar por acidente). Provado na prática: `git push --force` foi recusado
+("Cannot force-push to this branch") e `git push --delete main` também; a `main` ficou intacta.
+
+Sem exigência de PR: o fluxo normal (commit direto na `main`) continua funcionando, e o CI roda
+em todo push. Exigir **CI verde antes de merge** só faz sentido junto com fluxo de PR, e com
+`enforce_admins: true` isso passaria a bloquear o commit direto. Fica como opção do Victor:
+
+`DEPENDE DO VICTOR — exigir CI verde antes de merge (opcional)`
+Settings → Branches → Branch protection rules → `main` → marcar "Require status checks to pass
+before merging" e escolher o check `suite`; a partir daí, mudanças na `main` passam a entrar por
+Pull Request.
+
+## `vsp_ledger_backfill` — fechado (migration 009)
+
+Provado que ninguém do app a chama e que o backfill está completo; `revoke execute` de
+`public`, `anon` e `authenticated`. Sobram `postgres` (owner) e `service_role`. O corpo não
+mudou (mesmo md5). Detalhe em `migrations/APLICADO.md`, seção 009.
+
+## Demais funções SECURITY DEFINER — WARNING aceito
+
+As 11 portas do app (`vsp_registrar_venda`, `vsp_registrar_compra`, `vsp_cancelar_venda`,
+`vsp_estornar_compra`, `vsp_reembolsar_victor`, `vsp_registrar_conferencia_caixa`,
+`vsp_invalidar_conferencia_caixa`, `vsp_caixa_esperado`, `vsp_saldo_victor`, `vsp_autorizado`,
+`vsp_ator`) **continuam** com EXECUTE para `authenticated`: é assim que o app trabalha. O que as
+torna seguras está provado em `test/sql/portas_rpc.test.sql` — **49 ok, 0 falhas**: cada uma é
+`security definer` com `search_path = public, pg_temp`, anon não executa, o intruso autenticado é
+recusado em todas ("nao autorizado"), `vsp_ator()` não devolve nome de ninguém para ele, e nada
+de negócio mudou depois de todas as tentativas. **Não** se mexe na arquitetura para zerar o
+dashboard do Supabase.
+
+## Leaked Password Protection — habilitada
+
+Authentication → Sign In / Providers → Email → "Prevent use of leaked passwords" (atalho em
+Attack Protection). Ligada em 17/09/2026. Só afeta **cadastro e troca de senha** (checa a senha
+contra a base do HaveIBeenPwned); não altera senha, sessão, usuário nem método de login.
+Conferido depois: 2 contas em `auth.users` (Victor e Stefany), ambas confirmadas, nenhuma
+banida, últimos logins preservados; 2 autorizados ativos; cadastro público continua desligado.
+
+## Grants amplos — P2 de defesa em profundidade (nada revogado)
+
+Retrato de 17/09/2026: RLS ligado nas 12 tabelas. `conferencias_caixa` é a única já enxuta
+(anon sem nada; authenticated só SELECT/REFERENCES/TRIGGER — a escrita passa pelas RPCs). As
+outras 11 mantêm o grant padrão do Supabase para `anon` e `authenticated`
+(SELECT/INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER), e quem barra é a RLS — provado
+102/0. Como não há prova de benefício específico e revogar em massa quebraria o app se algum
+caminho legítimo passar por tabela, **nada foi revogado**. Candidato natural quando houver
+rodada para isso: tirar `anon` de tudo e TRUNCATE de `authenticated`.
+
+## Migration history do Supabase — P2
+
+A Management API não tem histórico dessas migrations; o repositório tem 000–009 e o
+`APLICADO.md`. **Não** se fabrica histórico retroativo.
+`P2 — formalizar baseline de migration history antes da próxima alteração estrutural relevante.`
+O estado Git × banco já é provado pelo contrato (`node test/estatico.js`).
+
+## Backup — as duas camadas, ditas com honestidade
+
+1. **Recuperação de verdade: Supabase.** Backup físico diário do banco (8 cópias visíveis,
+   10/09 a 17/09), restauração pelo painel. Sem PITR (add-on pago, não contratado).
+2. **Cópia operacional do app:** JSON semanal automático na tabela `backups` (12 mais recentes)
+   e download manual. Não inclui conferências, configuração nem auditoria (o download manual
+   também não leva a Conta do Victor), e **o app não restaura** por ela.
+
+O texto da tela de Config dizia "cópia completa" — corrigido nesta rodada para descrever o que
+a cópia realmente é e apontar o backup do Supabase como recuperação. Caso novo em
+`estatico.test.js` trava esse texto. Restore no app **não** foi implementado.
+
+## Performance — nada otimizado por antecipação
+
+Só itens INFO no advisor: FK `ledger_victor_estorna_id_fkey` sem índice dedicado; índices
+`idx_cc_conferido` e `idx_reposicoes_prod` ainda sem uso; Auth com limite absoluto de conexões.
+Com 65 vendas e 21 movimentos, nada disso é gargalo. **P3/P2 futuro**: reavaliar quando o volume
+crescer (índice da FK só quando houver estorno em massa; não apagar índice novo por "sem uso
+ainda"; não mexer na configuração de Auth).
+
+## P2 estrutural registrado (não feito)
+
+`P2 — servidor validar/calcular os campos financeiros críticos da venda (bruto, custo, taxa,
+líquido, lucro, margem) em vez de aceitar o que o frontend mandou.` Hoje a RPC recebe esses
+valores prontos; o custo médio, a baixa de estoque e a auditoria já são do servidor. Só voltar
+a isso em rodada explícita.
+
+## Placar desta rodada
+
+| o quê | resultado |
+|---|---|
+| `node test/run.js` | 267 / 267 |
+| `node test/estatico.js` | saída 0 (13 checagens; PERMISSOES nova) |
+| `node test/mutantes.js` | 36 / 36 mortos (PERM-M1 novo) |
+| SQL operações e razão | 34 / 0 |
+| SQL Conferência | 35 / 0 |
+| SQL extrato | 9 / 0 |
+| SQL segurança RLS | 102 / 0 |
+| SQL portas do app | 49 / 0 |
+| Canônicos | idênticos |
+
+## Continuam dependendo do Victor
+
+* `DEPENDE DO VICTOR — smoke venda/cancelamento autenticado`
+* `DEPENDE DO VICTOR — smoke offline autenticado`
+* `DEPENDE DO VICTOR — primeira Conferência de Caixa real`
+* `DEPENDE DO VICTOR — confirmar se a venda de R$ 1,00 de 29/07 ("Parceria") é intencional`
+* `DEPENDE DO VICTOR — exigir CI verde antes de merge (opcional)`

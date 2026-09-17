@@ -12,14 +12,15 @@ node test/run.js util estatico    # vários filtros
 node test/run.js --sem-cor        # sem ANSI (log, CI, redirecionamento)
 node test/run.js --cor            # força cor mesmo sem TTY
 
-node test/estatico.js             # as travas de texto, fora do runner (9 checagens)
+node test/estatico.js             # as travas de texto, fora do runner (13 checagens)
 node test/mutantes.js             # provas de mutante: estraga o código e exige falha
 node test/mutantes.js M3 M5       # só esses mutantes
 ```
 
-São **266 casos** hoje (17/09/2026, auditoria de encerramento): 33 no financeiro, **61 no
-razão da Conta do Victor**, 36 nas operações, 36 nos utilitários, 42 na fila offline, 24 na
-Conferência de Caixa, 7 no contrato do banco e 27 estáticos. Sai com código **1** se algum caso falhar
+**A contagem de casos mora no comando, não neste texto.** `node test/run.js` imprime o total
+e o placar por arquivo a cada rodada; o número do dia do fechamento está em
+`FECHAMENTO-VS-PERFORMANCE-ESTAVEL.md`. Este README descreve o que cada suíte **prova** —
+isso muda devagar; contagem muda a cada caso novo e envelhece no papel. Sai com código **1** se algum caso falhar
 (ou se um arquivo de teste não carregar), e **0** quando está tudo verde. Hoje não há
 nenhum pendente: as duas divergências abertas em 16/09 foram corrigidas no mesmo
 dia. Testado no Windows 11 com Git Bash e Node 24.
@@ -385,7 +386,7 @@ Não executa nada (fora o parse). Pega justamente o que o harness **não** pega:
   do Supabase no arquivo é a **anon** (o teste decodifica o JWT e confere `role`) —
   nunca a `service_role`.
 
-`test/estatico.js` é o mesmo espírito **fora do runner**: 10 checagens que imprimem uma
+`test/estatico.js` é o mesmo espírito **fora do runner**: 13 checagens que imprimem uma
 linha cada e saem com código 1 na primeira reprovação. Duas nasceram com o
 razão — a **fórmula legada** (`custoTot+valorEstTotal()`, `mercadoriaFornecida`,
 `faltaPagar`, `filter(s=>s.tipo==='fornecedor').reduce`) não pode voltar ao `index.html`,
@@ -428,8 +429,10 @@ Se o trecho a mutar não casar exatamente o número de vezes esperado, o script 
 "morto": ele diz `NAO APLICADO` e manda reescrever a mutação. Um mutante que nunca chegou
 a ser aplicado não prova nada.
 
-Resultado de 17/09/2026 (auditoria de encerramento) — **35 mutantes, 35 mortos, 0
-sobreviventes** (controle: 266 casos verdes). Os sete novos: `RZ-M1` (trigger de estorno da
+O placar sai do próprio comando (`node test/mutantes.js`), e o do dia do fechamento está em
+`FECHAMENTO-VS-PERFORMANCE-ESTAVEL.md`. Nenhum sobrevivente é aceito: mutante vivo é buraco na
+suíte. O mais novo é `PERM-M1` (a 009 deixa de revogar o backfill do razão — morto pela
+checagem PERMISSOES do `estatico.js`). Da auditoria de encerramento: `RZ-M1` (trigger de estorno da
 compra na 008 trocado para UPDATE), `RZ-M2` (app soma venda futura no caixa), `RZ-M3` (saldo do
 Victor legível fora da allowlist), `RZ-M4` (banco soma venda futura no caixa esperado),
 `RZ-M5`/`RZ-M6` (pagar fornecedor / estornar compra sem reler o extrato — Conta do Victor com

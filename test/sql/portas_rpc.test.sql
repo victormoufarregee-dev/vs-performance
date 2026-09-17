@@ -1,6 +1,6 @@
 -- ============================================================================
 -- As 11 portas SECURITY DEFINER do app — rodado DENTRO do banco real, desfeito no fim.
---   esperado:  RESULTADO_PORTAS: 67 ok, 0 falha(s)
+--   esperado:  RESULTADO_PORTAS: 49 ok, 0 falha(s)
 --
 -- O Supabase Advisor lista essas funções como "SECURITY DEFINER executável por
 -- authenticated". É esperado: são as portas do app. O que as torna seguras, e é o que

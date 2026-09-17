@@ -426,3 +426,31 @@ md5 das tabelas idênticos). Auditoria 264 = 263 + 1 LOGIN legítimo do Victor (
 causado pela 008.
 
 Rollback: comentado no fim do arquivo `008_integridade_razao_caixa.sql`.
+
+
+---
+
+## 009 — backfill do razão fechado para a API ✅ (17/09/2026)
+
+Hardening pós-baseline. O Supabase Advisor apontava `public.vsp_ledger_backfill()` como
+`SECURITY DEFINER` executável por `authenticated`. Ela é administrativa: montou o razão uma
+vez, na 006.
+
+**Provado antes de aplicar (só leitura):** `index.html` e `sw.js` não citam a função; nenhuma
+outra função, view, política ou trigger a chama; não há `pg_cron`; o backfill está completo
+(saldo inicial presente, 0 compras sem débito, 0 pagamentos ao fornecedor sem crédito — desde a
+008 os triggers mantêm isso sozinhos).
+
+**Ensaio (transação desfeita):** 8 ok / 0 falhas — depois do `revoke`, `authenticated` e `anon`
+não executam, `service_role` continua, Victor recebe `insufficient_privilege` ao chamar, e
+`vsp_saldo_victor()` (5.758,30), `vsp_caixa_esperado()` (−3,49) e `vsp_ator()` seguem normais.
+
+**Aplicada.** ACL final: `{postgres=X/postgres,service_role=X/postgres}`. Corpo intacto (md5
+`80433972916c13f8b70bd1ea6ccecc63`, igual à foto do contrato).
+
+**Depois (banco real):** operações e razão 34/0 · Conferência 35/0 · extrato 9/0 · segurança
+RLS 102/0 · portas do app (`test/sql/portas_rpc.test.sql`, arquivo novo) 49/0. Canônicos
+idênticos (md5 das tabelas `25cdf18d22fa4d922da7f94bb23bc08b` antes e depois).
+
+Rollback: `grant execute on function public.vsp_ledger_backfill() to authenticated;` — só se um
+backfill novo for mesmo necessário, e revogar de novo depois.
