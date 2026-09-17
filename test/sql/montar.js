@@ -85,12 +85,12 @@ const MUTANTES = {
   SM7: {
     titulo: 'registrar a conferência "ajusta" o caixa esperado',
     trocas: [
-      ["  perform public.vsp_audit('CONFERENCIA_CAIXA',",
-       "  if v_c.diferenca <> 0 then\n" +
+      ["  perform public.vsp_cc_audit('CONFERENCIA_CAIXA',",
+       "  if v_c.diferenca < 0 then  -- a falta vira uma saída de ajuste\n" +
        "    insert into public.saidas (id, tipo, socio, descricao, data, val, pgto)\n" +
-       "    values (public.vsp_novo_id('saidas'), 'outros', null, 'Ajuste de conferência', current_date, -v_c.diferenca, 'pix');\n" +
+       "    values ((select coalesce(max(id), 0) + 1 from public.saidas), 'outros', null, 'Ajuste de conferência', current_date, -v_c.diferenca, 'pix');\n" +
        "  end if;\n" +
-       "  perform public.vsp_audit('CONFERENCIA_CAIXA',", 1],
+       "  perform public.vsp_cc_audit('CONFERENCIA_CAIXA',", 1],
     ],
   },
 };

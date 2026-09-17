@@ -203,3 +203,74 @@ estrutura interna.
 ```
 
 Backup diário automático do Supabase cobre o pior caso (8 cópias, 08/09 a 15/09).
+
+## 007 — Conferência de Caixa ✅ (17/09/2026)
+
+Aplicada pelo SQL Editor depois de ensaiada no próprio banco, em transação desfeita.
+
+### Canônicos — antes, depois do ensaio e depois de aplicar
+
+| Indicador | Antes | Depois de aplicar |
+|---|---|---|
+| Conta do Victor (`vsp_saldo_victor`) | R$ 5.758,30 | R$ 5.758,30 |
+| Estoque | R$ 4.660,00 (TG 8 cx, RETA_VERDE 0) | idem |
+| CMV | R$ 23.539,30 | R$ 23.539,30 |
+| Caixa (recebido − saídas) | −R$ 3,49 (51.066,00 − 51.069,49) | −R$ 3,49 (`vsp_caixa_esperado_calc()` = −3,49) |
+| Vendas / canceladas / clientes / saídas / reposições | 65 / 5 / 21 / 23 / 5 | 65 / 5 / 21 / 23 / 5 |
+| Reposições (total) / receita bruta / fiado aberto | 19.065,00 / 51.066,00 / 0,00 | idem |
+| Razão do Victor / auditoria | 21 / 263 | 21 / 263 |
+| md5 de vendas, saídas, clientes, reposições, produtos, ledger_victor, config | registrados | **idênticos** |
+| Conferências | — | 0 (nenhuma criada; a primeira é do Victor) |
+
+Colunas `vendas.liq` e `saidas.val` são `numeric`; nenhuma linha com mais de 2 casas.
+
+### Achado no ensaio: auxiliares do arquivo 004 não existem no banco
+
+`vsp_brl`, `vsp_audit`, `vsp_novo_id`, `vsp_display`, `vsp_uid` e `vsp_exige_autorizacao`
+estão em `migrations/004_rpc_operacoes.sql`, mas **não existem em produção** — as RPCs reais
+gravam a auditoria com `insert` direto e usam `vsp_autorizado()`/`vsp_ator()`. A primeira
+versão da 007 chamava `vsp_brl` e falhou no ensaio (desfeito, nada aplicado). A 007 passou a
+ter auxiliares próprios e privados (`vsp_cc_brl`, `vsp_cc_audit`), e o `test/estatico.js`
+reprova a 007 se ela voltar a chamar algum dos inexistentes. **O arquivo 004 continua
+divergente do banco** — registrado como risco, não corrigido nesta etapa.
+
+`vsp_ator()` em produção: `coalesce((select nome from usuarios_autorizados where uid = auth.uid() and ativo), '(sessao desconhecida)')`.
+
+### Testes em SQL real (`test/sql/conferencia_caixa.test.sql`, 35 verificações)
+
+| Rodada | Resultado |
+|---|---|
+| Controle, antes de aplicar (migration + testes, desfeito) | **35 ok, 0 falhas** |
+| Controle, contra a 007 aplicada (só testes, desfeito) | **35 ok, 0 falhas** — 0 conferências e auditoria 263 depois |
+
+Cobre: assinatura só com saldo real/observação/op_id; `SECURITY DEFINER` + `search_path` nas 4
+funções; anon sem `EXECUTE` e sem `SELECT`; conta interna fechada; RLS ligada; intruso logado
+fora da allowlist recusado e sem ver linhas; Victor igual (0), falta (−50,00), sobra (+50,00),
+−0,01, +0,10, 3 casas recusadas; mesmo op_id devolve a primeira (1 linha); registrar não muda
+caixa, vendas, saídas, razão, saldo do Victor nem estoque; auditoria com o ator da sessão;
+insert/update direto recusados; **Stefany com observação "Victor" grava Stefany**; `p_usuario` e
+`p_saldo_esperado` não existem; foto não muda quando entra uma saída; esperado forçado a −3,49
+com real 0 → +3,49; invalidação exige motivo, preserva números, é idempotente e auditada; o dono
+do banco não reescreve, não apaga e não "desinvalida"; `check` recusa diferença fora da convenção.
+
+Pela API pública, sem login: `vsp_caixa_esperado`, `vsp_caixa_esperado_calc`,
+`vsp_registrar_conferencia_caixa`, `vsp_invalidar_conferencia_caixa` e `vsp_cc_audit` →
+`42501 permission denied`; `conferencias_caixa` → `42501`; chamada com `p_saldo_esperado` →
+`PGRST202` (a função não aceita esse parâmetro).
+
+### Mutantes em SQL real (cada um: migration mutada + testes, desfeito)
+
+| Mutante | Resultado | Quem matou |
+|---|---|---|
+| SM1 diferença = esperado − real | **morto** (28 ok, 7 falhas) | T22 falta virou +50,00; T23… |
+| SM2 cliente manda o esperado | **morto** (32 ok, 3 falhas) | T01 assinatura; **T42 esperado ditado = 1,00** |
+| SM3 retry cria segunda | **morto** (34 ok, 1 falha) | T27 `n=2` |
+| SM4 Stefany assina como Victor | **morto** (32 ok, 3 falhas) | T01; **T41 "IMPERSONACAO: Stefany gravou como Victor"** |
+| SM5 foto recalcula | **morto** (31 ok, 4 falhas) | T50 foto foi a −13,49; T70–T72 |
+| SM6 centavos | **morto** (27 ok, 8 falhas) | T21 esperado −3,00 no lugar de −3,49; T24… |
+| SM7 registrar "ajusta" o caixa | **morto** (30 ok, 5 falhas) | T23 esperado foi de −3,49 a −53,49 |
+
+Duas rodadas iniciais de SM1/SM2 e uma de SM7 morreram por **quebra do script** (literal sem
+tipo em `text[] ||`; consulta de assinatura inexistente; saída negativa barrada por
+`chk_saida_val`) — não contaram como prova. O teste e o SM7 foram corrigidos e as três
+rodaram de novo, mortas por comportamento. O controle foi repetido depois da correção: 35/0.

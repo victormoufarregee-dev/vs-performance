@@ -51,30 +51,33 @@ begin
      and p.prosecdef and array_to_string(p.proconfig, ',') like '%search_path=public, pg_temp%';
   if n = 4 then ok := ok + 1; else f := f || ('T02 security definer + search_path fixo em ' || n || ' de 4 funcoes'); end if;
 
-  if not has_function_privilege('anon', 'public.vsp_registrar_conferencia_caixa(numeric,text,text)', 'execute')
+  if to_regprocedure('public.vsp_registrar_conferencia_caixa(numeric,text,text)') is null
+     or to_regprocedure('public.vsp_invalidar_conferencia_caixa(bigint,text)') is null then
+    f := f || text 'T03 assinatura esperada das RPCs nao existe';
+  elsif not has_function_privilege('anon', 'public.vsp_registrar_conferencia_caixa(numeric,text,text)', 'execute')
      and not has_function_privilege('anon', 'public.vsp_invalidar_conferencia_caixa(bigint,text)', 'execute')
      and not has_function_privilege('anon', 'public.vsp_caixa_esperado()', 'execute')
      and not has_function_privilege('authenticated', 'public.vsp_caixa_esperado_calc()', 'execute')
-  then ok := ok + 1; else f := f || 'T03 anon executa alguma funcao, ou a conta interna esta exposta'; end if;
+  then ok := ok + 1; else f := f || text 'T03 anon executa alguma funcao, ou a conta interna esta exposta'; end if;
 
   if not has_table_privilege('anon', 'public.conferencias_caixa', 'select')
      and not has_table_privilege('authenticated', 'public.conferencias_caixa', 'insert')
      and not has_table_privilege('authenticated', 'public.conferencias_caixa', 'update')
      and not has_table_privilege('authenticated', 'public.conferencias_caixa', 'delete')
      and (select relrowsecurity from pg_class where oid = 'public.conferencias_caixa'::regclass)
-  then ok := ok + 1; else f := f || 'T04 tabela gravavel pela API, legivel por anon, ou sem RLS'; end if;
+  then ok := ok + 1; else f := f || text 'T04 tabela gravavel pela API, legivel por anon, ou sem RLS'; end if;
 
   -- ---------------------------------------------------------------- anon
   perform set_config('request.jwt.claims', '', true); perform set_config('request.jwt.claim.sub', '', true);
   execute 'set local role anon';
   begin
     perform public.vsp_registrar_conferencia_caixa(1, 'anon', 't-anon');
-    f := f || 'T10 anon registrou conferencia';
+    f := f || text 'T10 anon registrou conferencia';
   exception when insufficient_privilege then ok := ok + 1;
             when others then f := f || ('T10 anon: erro inesperado ' || sqlerrm); end;
   begin
     perform count(*) from public.conferencias_caixa;
-    f := f || 'T11 anon leu a tabela';
+    f := f || text 'T11 anon leu a tabela';
   exception when insufficient_privilege then ok := ok + 1; end;
   execute 'reset role';
 
@@ -84,14 +87,14 @@ begin
   execute 'set local role authenticated';
   begin
     perform public.vsp_registrar_conferencia_caixa(1, 'intruso', 't-intruso');
-    f := f || 'T12 intruso registrou conferencia';
+    f := f || text 'T12 intruso registrou conferencia';
   exception when others then ok := ok + 1; end;
   begin
     perform public.vsp_caixa_esperado();
-    f := f || 'T13 intruso leu o caixa esperado';
+    f := f || text 'T13 intruso leu o caixa esperado';
   exception when others then ok := ok + 1; end;
   select count(*) into n from public.conferencias_caixa;
-  if n = 0 then ok := ok + 1; else f := f || 'T14 intruso ve conferencias'; end if;
+  if n = 0 then ok := ok + 1; else f := f || text 'T14 intruso ve conferencias'; end if;
   execute 'reset role';
 
   -- ---------------------------------------------------------------- Victor
@@ -119,7 +122,7 @@ begin
   if (r->'conferencia'->>'diferenca')::numeric = 0.10 then ok := ok + 1; else f := f || ('T25 dez centavos: ' || r::text); end if;
   begin
     perform public.vsp_registrar_conferencia_caixa(100.001, 'tres casas', 't-tres');
-    f := f || 'T26 aceitou 3 casas decimais';
+    f := f || text 'T26 aceitou 3 casas decimais';
   exception when others then ok := ok + 1; end;
 
   -- idempotência: mesmo op_id, valor diferente -> devolve a primeira, não grava outra
@@ -150,11 +153,11 @@ begin
   begin
     insert into public.conferencias_caixa (saldo_esperado, saldo_real, diferenca, op_id, created_by)
     values (0, 0, 0, 't-direto', 'Victor');
-    f := f || 'T30 authenticated inseriu direto na tabela';
+    f := f || text 'T30 authenticated inseriu direto na tabela';
   exception when insufficient_privilege then ok := ok + 1; end;
   begin
     update public.conferencias_caixa set saldo_real = 0 where id = id_falta;
-    f := f || 'T31 authenticated atualizou direto na tabela';
+    f := f || text 'T31 authenticated atualizou direto na tabela';
   exception when insufficient_privilege then ok := ok + 1; end;
   execute 'reset role';
 
@@ -168,8 +171,8 @@ begin
   else f := f || ('T40 ator da Stefany: ' || coalesce(r->'conferencia'->>'created_by', '?')); end if;
   begin
     execute $q$select public.vsp_registrar_conferencia_caixa(p_saldo_real => 1, p_observacao => '', p_op_id => 't-imp', p_usuario => 'Victor')$q$ into r;
-    if r->'conferencia'->>'created_by' = 'Victor' then f := f || 'T41 IMPERSONACAO: Stefany gravou como Victor';
-    else f := f || 'T41 a funcao aceita p_usuario (mesmo sem efeito, nao deveria existir)'; end if;
+    if r->'conferencia'->>'created_by' = 'Victor' then f := f || text 'T41 IMPERSONACAO: Stefany gravou como Victor';
+    else f := f || text 'T41 a funcao aceita p_usuario (mesmo sem efeito, nao deveria existir)'; end if;
   exception when undefined_function then ok := ok + 1; end;
   begin
     execute $q$select public.vsp_registrar_conferencia_caixa(p_saldo_real => 1, p_observacao => '', p_op_id => 't-dita', p_saldo_esperado => 1)$q$ into r;
@@ -177,20 +180,27 @@ begin
   exception when undefined_function then ok := ok + 1; end;
   select count(*) into n from public.audit_log where acao = 'CONFERENCIA_CAIXA' and usuario = 'Stefany'
      and detalhes like '%conferência ' || (select id from public.conferencias_caixa where op_id = 't-stef');
-  if n = 1 then ok := ok + 1; else f := f || 'T43 auditoria da Stefany'; end if;
+  if n = 1 then ok := ok + 1; else f := f || text 'T43 auditoria da Stefany'; end if;
   execute 'reset role';
 
   -- ---------------------------------------------------------------- foto: o caixa muda, a conferência não
   insert into public.saidas (id, tipo, socio, descricao, data, val, pgto)
-  values (public.vsp_novo_id('saidas'), 'outros', null, 'TESTE conferencia (revertido)', current_date, 10.00, 'pix');
+  values ((select coalesce(max(id), 0) + 1 from public.saidas), 'outros', null, 'TESTE conferencia (revertido)', current_date, 10.00, 'pix');
   esp2 := public.vsp_caixa_esperado_calc();
   select * into c from public.conferencias_caixa where id = id_igual;
   if esp2 = esp - 10 and c.saldo_esperado = esp and c.diferenca = 0 then ok := ok + 1;
   else f := f || ('T50 foto mudou: esperado agora ' || esp2 || ', foto ' || c.saldo_esperado || ' dif ' || c.diferenca); end if;
 
-  -- esperado negativo (−3,49), qualquer que seja o caixa real de hoje
-  insert into public.saidas (id, tipo, socio, descricao, data, val, pgto)
-  values (public.vsp_novo_id('saidas'), 'outros', null, 'TESTE negativo (revertido)', current_date, esp2 + 3.49, 'pix');
+  -- esperado negativo (−3,49), qualquer que seja o caixa real de hoje. O banco não aceita
+  -- saída negativa (chk_saida_val), então: para DESCER o caixa, uma saída a mais; para SUBIR,
+  -- a maior saída fica menor. As duas coisas são desfeitas pela exceção final.
+  if esp2 + 3.49 > 0 then
+    insert into public.saidas (id, tipo, socio, descricao, data, val, pgto)
+    values ((select coalesce(max(id), 0) + 1 from public.saidas), 'outros', null, 'TESTE negativo (revertido)', current_date, esp2 + 3.49, 'pix');
+  else
+    update public.saidas set val = val + (esp2 + 3.49)
+     where id = (select id from public.saidas order by val desc, id limit 1);
+  end if;
   perform set_config('request.jwt.claims', json_build_object('sub', uv, 'role', 'authenticated')::text, true);
   perform set_config('request.jwt.claim.sub', uv::text, true);
   execute 'set local role authenticated';
@@ -202,7 +212,7 @@ begin
   -- invalidar: motivo obrigatório, números preservados, uma vez só
   begin
     perform public.vsp_invalidar_conferencia_caixa(id_falta, '  ');
-    f := f || 'T60 invalidou sem motivo';
+    f := f || text 'T60 invalidou sem motivo';
   exception when others then ok := ok + 1; end;
   r := public.vsp_invalidar_conferencia_caixa(id_falta, 'digitei errado');
   if r->'conferencia'->>'situacao' = 'invalidada' and r->'conferencia'->>'invalidada_por' = 'Victor'
@@ -212,26 +222,26 @@ begin
   if (r->>'repetida')::boolean and r->'conferencia'->>'motivo_invalidacao' = 'digitei errado' then ok := ok + 1;
   else f := f || ('T62 invalidar duas vezes: ' || r::text); end if;
   select count(*) into n from public.audit_log where acao = 'CONFERENCIA_CAIXA_INVALIDADA' and usuario = 'Victor';
-  if n >= 1 then ok := ok + 1; else f := f || 'T63 auditoria da invalidacao'; end if;
+  if n >= 1 then ok := ok + 1; else f := f || text 'T63 auditoria da invalidacao'; end if;
   execute 'reset role';
 
   -- imutável até para o dono do banco
   begin
     update public.conferencias_caixa set saldo_esperado = saldo_esperado + 1, diferenca = diferenca - 1 where id = id_igual;
-    f := f || 'T70 o dono do banco reescreveu a foto';
+    f := f || text 'T70 o dono do banco reescreveu a foto';
   exception when insufficient_privilege then ok := ok + 1; end;
   begin
     delete from public.conferencias_caixa where id = id_igual;
-    f := f || 'T71 conferencia apagada';
+    f := f || text 'T71 conferencia apagada';
   exception when insufficient_privilege then ok := ok + 1; end;
   begin
     update public.conferencias_caixa set situacao = 'valida', invalidada_em = null, invalidada_por = null, motivo_invalidacao = null where id = id_falta;
-    f := f || 'T72 invalidada voltou a valida';
+    f := f || text 'T72 invalidada voltou a valida';
   exception when insufficient_privilege then ok := ok + 1; end;
   begin
     insert into public.conferencias_caixa (saldo_esperado, saldo_real, diferenca, op_id, created_by)
     values (100, 90, 10, 't-conta-errada', 'Victor');
-    f := f || 'T73 aceitou diferenca fora da convencao real - esperado';
+    f := f || text 'T73 aceitou diferenca fora da convencao real - esperado';
   exception when check_violation then ok := ok + 1; end;
 
   raise exception 'RESULTADO_CONFERENCIA: % ok, % falha(s) | caixa_esperado_antes=% | linhas_com_mais_de_2_casas=% | ator_victor=% ator_stefany=% | %',

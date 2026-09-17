@@ -1,6 +1,6 @@
 -- ============================================================================
 -- 007 — CONFERÊNCIA DE CAIXA
--- Escrita em 17/09/2026. NÃO APLICADA até constar em migrations/APLICADO.md.
+-- Escrita e aplicada em produção em 17/09/2026 (ver migrations/APLICADO.md, seção 007).
 --
 -- PERGUNTA QUE RESPONDE: o dinheiro que existe de verdade bate com o que o sistema diz?
 --
@@ -22,6 +22,34 @@
 -- O reembolso ao Victor entra porque vsp_reembolsar_victor grava uma saída.
 -- Estoque, CMV, lucro e a dívida com o Victor NÃO entram.
 -- ============================================================================
+
+-- ---------------------------------------------------------------------------
+-- 0) Auxiliares PRIVADOS desta migration.
+--    O banco de produção NÃO tem vsp_brl / vsp_audit / vsp_novo_id (descritos no arquivo
+--    004, mas não aplicados assim — descoberto no ensaio de 17/09/2026). A 007 não depende
+--    deles: grava a auditoria como as RPCs reais gravam (insert direto em audit_log).
+-- ---------------------------------------------------------------------------
+create or replace function public.vsp_cc_brl(p_v numeric)
+returns text language sql immutable
+set search_path = public, pg_temp as $fn$
+  select case when coalesce(p_v,0) < 0 then '-' else '' end || 'R$ ' ||
+         replace(replace(replace(to_char(abs(coalesce(p_v,0)), 'FM999,999,999,990.00'), '.', '|'), ',', '.'), '|', ',');
+$fn$;
+revoke all on function public.vsp_cc_brl(numeric) from public, anon, authenticated;
+
+-- id em milissegundos, como as RPCs reais; se duas auditorias caem no mesmo milissegundo,
+-- usa o próximo número livre em vez de estourar a chave primária
+create or replace function public.vsp_cc_audit(p_acao text, p_detalhes text, p_ator text)
+returns void language plpgsql security definer
+set search_path = public, pg_temp as $fn$
+begin
+  insert into public.audit_log (id, ts, display, usuario, acao, detalhes, dispositivo)
+  values (greatest((extract(epoch from clock_timestamp()) * 1000)::bigint,
+                   (select coalesce(max(id), 0) + 1 from public.audit_log)),
+          now(), to_char(now() at time zone 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI:SS'),
+          p_ator, p_acao, p_detalhes, 'servidor');
+end $fn$;
+revoke all on function public.vsp_cc_audit(text,text,text) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 1) Caixa esperado — uma função só, usada pela tela e pela conferência
@@ -189,10 +217,10 @@ begin
                               'caixa_esperado_agora', public.vsp_caixa_esperado_calc());
   end;
 
-  perform public.vsp_audit('CONFERENCIA_CAIXA',
-    'Esperado ' || public.vsp_brl(v_c.saldo_esperado) ||
-    ' · real '  || public.vsp_brl(v_c.saldo_real) ||
-    ' · diferença ' || public.vsp_brl(v_c.diferenca) ||
+  perform public.vsp_cc_audit('CONFERENCIA_CAIXA',
+    'Esperado ' || public.vsp_cc_brl(v_c.saldo_esperado) ||
+    ' · real '  || public.vsp_cc_brl(v_c.saldo_real) ||
+    ' · diferença ' || public.vsp_cc_brl(v_c.diferenca) ||
     case when v_c.observacao <> '' then ' · ' || v_c.observacao else '' end ||
     ' · conferência ' || v_c.id, v_ator);
 
@@ -238,9 +266,9 @@ begin
    where id = p_id
   returning * into v_c;
 
-  perform public.vsp_audit('CONFERENCIA_CAIXA_INVALIDADA',
-    'Conferência ' || v_c.id || ' (esperado ' || public.vsp_brl(v_c.saldo_esperado) ||
-    ', real ' || public.vsp_brl(v_c.saldo_real) || ', diferença ' || public.vsp_brl(v_c.diferenca) ||
+  perform public.vsp_cc_audit('CONFERENCIA_CAIXA_INVALIDADA',
+    'Conferência ' || v_c.id || ' (esperado ' || public.vsp_cc_brl(v_c.saldo_esperado) ||
+    ', real ' || public.vsp_cc_brl(v_c.saldo_real) || ', diferença ' || public.vsp_cc_brl(v_c.diferenca) ||
     ') invalidada. Motivo: ' || v_c.motivo_invalidacao, v_ator);
 
   return jsonb_build_object('repetida', false, 'conferencia', to_jsonb(v_c));
@@ -255,3 +283,5 @@ grant execute on function public.vsp_invalidar_conferencia_caixa(bigint,text) to
 --   drop function if exists public.vsp_cc_protege();
 --   drop function if exists public.vsp_caixa_esperado();
 --   drop function if exists public.vsp_caixa_esperado_calc();
+--   drop function if exists public.vsp_cc_audit(text,text,text);
+--   drop function if exists public.vsp_cc_brl(numeric);

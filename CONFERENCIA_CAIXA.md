@@ -1,7 +1,9 @@
 # Conferência de Caixa — 17/09/2026
 
-**Estado:** app e migration escritos e testados localmente; **migration 007 NÃO aplicada**;
-**não publicado**. Falta: `DEPENDE DO VICTOR — autenticar Supabase para reconciliação`.
+**Estado:** migration 007 **aplicada em produção** em 17/09/2026 depois de ensaiada no banco;
+canônicos idênticos antes e depois; app publicado. Primeira conferência real:
+`DEPENDE DO VICTOR — primeira conferência de caixa real`. Detalhe do banco em
+`migrations/APLICADO.md`, seção 007.
 
 SHA inicial: `86be916` (produção igual ao repositório, 228/228).
 
@@ -116,20 +118,20 @@ construir.
   razão/estoque, auditoria, gravação direta recusada, **Stefany com payload "Victor"**, `p_usuario`
   e `p_saldo_esperado` inexistentes, foto que não muda quando entra uma saída, esperado
   **−3,49** forçado, invalidação, imutabilidade até para o dono do banco, convenção pelo
-  `check`. **Ainda não rodado: depende do login.**
+  `check`. **Rodado no banco: 35/0 antes e depois de aplicar.**
 * Suíte: **228 → 250**, todos verdes.
 
 ### Mutantes
 
 | # | pedido | app (harness) | banco (SQL real) |
 |---|---|---|---|
-| M1 | diferença = esperado − real | CX-M1 **morto** | SM1 — pendente de rodar |
-| M2 | cliente manda o esperado | CX-M2 **morto** | SM2 — pendente |
-| M3 | retry cria segunda | CX-M3 **morto** | SM3 — pendente |
-| M4 | Stefany assina como Victor | CX-M4 **morto** (autor no payload) | SM4 — pendente |
-| M5 | histórico recalcula | CX-M5 **morto** | SM5 — pendente |
-| M6 | erro de centavos | CX-M6 **morto** (depois de acrescentar 19,99 / 0,29 / 1,15 / 4,35 — com 100,01 ele sobrevivia, porque 100.01×100 é exato em ponto flutuante) | SM6 — pendente |
-| M7 | registrar altera o caixa | CX-M7 **morto** | SM7 — pendente |
+| M1 | diferença = esperado − real | CX-M1 **morto** | SM1 **morto** (T22) |
+| M2 | cliente manda o esperado | CX-M2 **morto** | SM2 **morto** (T42) |
+| M3 | retry cria segunda | CX-M3 **morto** | SM3 **morto** (T27) |
+| M4 | Stefany assina como Victor | CX-M4 **morto** (autor no payload) | SM4 **morto** (T41) |
+| M5 | histórico recalcula | CX-M5 **morto** | SM5 **morto** (T50) |
+| M6 | erro de centavos | CX-M6 **morto** (depois de acrescentar 19,99 / 0,29 / 1,15 / 4,35 — com 100,01 ele sobrevivia, porque 100.01×100 é exato em ponto flutuante) | SM6 **morto** (T21) |
+| M7 | registrar altera o caixa | CX-M7 **morto** | SM7 **morto** (T23) |
 | M8 | offline usa saldo antigo | CX-M8 **morto** | não se aplica (é do app) |
 
 Suíte inteira: **23 mutantes, 23 mortos** (8 do razão, 7 da fila, 8 da conferência). O

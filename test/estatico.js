@@ -120,6 +120,10 @@ if (!/create trigger trg_cc_protege before update or delete on public\.conferenc
   confProblemas.push('trigger de imutabilidade');
 if (/insert\s+into\s+public\.(saidas|vendas|ledger_victor|reposicoes|produtos)|update\s+public\.(saidas|vendas|ledger_victor|reposicoes|produtos)|delete\s+from\s+public\./i.test(corpoSql007))
   confProblemas.push('a 007 grava em tabela de negocio (a conferencia so pode ler)');
+// o banco de produção NÃO tem estes auxiliares (estão no arquivo 004, mas não foram
+// aplicados assim — descoberto no ensaio de 17/09/2026). Usar qualquer um derruba a 007.
+if (/public\.vsp_(brl|audit|novo_id|display|uid|exige_autorizacao)\(/.test(corpoSql007))
+  confProblemas.push('a 007 depende de auxiliar que nao existe no banco (vsp_brl/vsp_audit/vsp_novo_id...)');
 if ((corpoSql007.match(/public\.vsp_ator\(\)/g) || []).length < 2)
   confProblemas.push('autor fora de vsp_ator()');
 if (!corpoSql007.includes('revoke all on function public.vsp_caixa_esperado_calc() from public, anon, authenticated'))
