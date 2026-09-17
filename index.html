@@ -2043,13 +2043,14 @@ async function regVenda(){
   const t=document.getElementById('vTipo').value,q=parseInt(document.getElementById('vQtd').value)||0,vo=valNum('vValOrig')||0,dc=valNum('vDesc')||0,vf=Math.max(0,vo-dc),dt=document.getElementById('vData').value,obs=document.getElementById('vObs').value.trim(),pg=document.getElementById('vPgto').value,pa=pg==='parcelado'?parseInt(document.getElementById('vParcelas').value):null,tx=pg==='fiado'?0:(parseFloat(document.getElementById('vTaxa').value)||0),tq=document.getElementById('vTaxaQuem').value;
   // C6 — TODA validação acontece ANTES de criar o cliente. Antes, um preço inválido gravava
   // o cliente e abortava a venda; ao tentar de novo nascia um cliente duplicado.
+  // Campo de dinheiro ambíguo não pode virar 0 calado: "1,000" é mil ou é um? Vem ANTES do
+  // "falta preencher", senão o 0 de recusa se disfarça de campo vazio.
+  const numErro=conferirNums([['vValOrig','preço unitário'],['vDesc','desconto']]);
+  if(numErro){showToast(numErro,'err');return;}
   if(!q||!vo||!dt){
     const falta=[];if(!q)falta.push('quantidade');if(!vo)falta.push('preço unitário');if(!dt)falta.push('data');
     showToast('Falta preencher: '+falta.join(', ')+'.','err');return;
   }
-  // Campo de dinheiro ambíguo não pode virar 0 calado: "1,000" é mil ou é um?
-  const numErro=conferirNums([['vValOrig','preço unitário'],['vDesc','desconto']]);
-  if(numErro){showToast(numErro,'err');return;}
   const cuUnit=t==='caixa'?p.custoCaixa:p.custoFrasco;
   if(!cuUnit||cuUnit<=0){showToast('Cadastre o custo de '+p.nome+' antes de vender (Produtos → Editar).','err');return;}
   // Estoque "prometido" por vendas guardadas neste aparelho e ainda nao confirmadas conta como
@@ -2308,8 +2309,8 @@ function listaFornecedores(){const set=new Set(['Victor','Hassan']);DB.reposicoe
 function populateFornecedores(){const dl=document.getElementById('fornecedoresList');if(dl)dl.innerHTML=listaFornecedores().map(f=>`<option value="${f}"></option>`).join('');}
 async function regSaida(){
   const tipo=document.getElementById('fTipo').value,socio=tipo==='fornecedor'?document.getElementById('fForn').value.trim():document.getElementById('fSocio').value,desc=document.getElementById('fDesc').value.trim(),data=document.getElementById('fData').value,val=valNum('fVal')||0,pgto=document.getElementById('fPgto').value;
-  if(!desc||!val||!data){showToast('Preencha descrição, valor e data.','err');return;}
   {const e=conferirNums([['fVal','valor']]);if(e){showToast(e,'err');return;}}
+  if(!desc||!val||!data){showToast('Preencha descrição, valor e data.','err');return;}
   if(tipo==='fornecedor'&&!socio){showToast('Informe o fornecedor.','err');return;}
   showLoading('Salvando...');
   const id=Date.now();
@@ -3201,8 +3202,8 @@ function calcRep(){
 async function confReposicao(){
   const p=getProd(document.getElementById('repProd').value),t=document.getElementById('repTipo').value,q=parseInt(document.getElementById('repQtd').value)||0,cu=valNum('repCustUnit')||0,forn=document.getElementById('repForn').value.trim(),data=document.getElementById('repData').value,obs=document.getElementById('repObs').value.trim();
   if(!p){showToast('Selecione o produto.','err');return;}
-  if(!q||!cu||!data){showToast('Preencha quantidade, custo e data.','err');return;}
   {const e=conferirNums([['repCustUnit','custo unitário'],['repFrete','frete']]);if(e){showToast(e,'err');return;}}
+  if(!q||!cu||!data){showToast('Preencha quantidade, custo e data.','err');return;}
   // Aviso de possível duplicidade (mesma compra lançada 2x)
   const jaExiste=DB.reposicoes.some(r=>r.prod===p.id&&r.tipo===t&&+r.qtd===q&&Math.abs((+r.custTotal||0)-q*cu)<1&&r.data===data);
   if(jaExiste&&!confirm('Já existe uma compra idêntica deste produto nesta mesma data.\n\nLançar mesmo assim?'))return;
@@ -3289,8 +3290,8 @@ function editProduto(id){const p=getProd(id);if(!p)return;document.getElementByI
 async function salvarProduto(){
   const nome=document.getElementById('prodNome').value.trim(),vende=document.getElementById('prodVende').value,frac=vende==='ambos',fpc=frac?(parseInt(document.getElementById('prodFpc').value)||1):1,cc=valNum('prodCustoCaixa')||0,pp=valNum('prodPreco')||0,mn=parseInt(document.getElementById('prodMin').value)||0,ct=parseInt(document.getElementById('prodCrit').value)||0;
   if(!nome){showToast('Informe o nome do produto.','err');return;}
-  if(!cc){showToast('Informe o custo da caixa.','err');return;}
   {const e=conferirNums([['prodCustoCaixa','custo da caixa'],['prodPreco','preço padrão']]);if(e){showToast(e,'err');return;}}
+  if(!cc){showToast('Informe o custo da caixa.','err');return;}
   const cf=frac?+(cc/fpc).toFixed(2):cc;
   const eid=document.getElementById('prodEditId').value;
   showLoading('Salvando produto...');
