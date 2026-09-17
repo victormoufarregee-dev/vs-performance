@@ -396,8 +396,20 @@ saldo acumulado entre o que saiu e o que entrou.
 
 Caixa esperado negativo não existe fisicamente, então a leitura é: **saiu R$ 3,49 a mais do
 que o sistema viu entrar**, sobre mais de R$ 51 mil movimentados — resíduo, não vazamento.
-Fica registrado e documentado. A conferência **só verifica**: não criou lançamento de ajuste,
-e nenhum foi criado à mão.
+
+**Decisão do Victor, 17/09/2026: fica como resíduo documentado.** Não se investiga e não se
+ajusta. O caixa esperado continua −3,49 e a conferência 82 é o registro permanente de que
+esse número foi visto, conferido contra a realidade e aceito, com data, hora e autor.
+
+**Nenhum lançamento de ajuste foi criado**, nem pelo sistema nem à mão — e é assim que tem de
+ser. "Fechar" um caixa somando uma entrada de R$ 3,49 que não existiu é falsificar caixa: a
+conta bateria na tela e a verdade seria pior do que antes, porque o erro passaria a estar
+escondido dentro de um lançamento de aparência legítima. A conferência **só verifica**, de
+propósito, e o `trg_cc_protege` garante que nem o dono do banco reescreve a foto depois.
+
+Se um dia aparecer a origem dos R$ 3,00 — uma venda pequena de julho que não foi lançada, por
+exemplo — o certo é **lançar a venda que faltou**, não um ajuste. Aí o caixa esperado se
+corrige sozinho, pelo fato, e a conferência 82 continua sendo o retrato honesto de hoje.
 
 ### 10D. A venda de R$ 1,00 de 29/07 — investigada, nada alterado
 
@@ -465,8 +477,9 @@ auditoria 264 · última 2026-09-17T16:44:49.35Z   ← igual à de antes
 
 ## 13. Pendências humanas (só o que realmente exige o Victor)
 
-1. ~~Primeira Conferência de Caixa real~~ — **feita em 17/09/2026** (conferência 82, diferença
-   +3,49; ver 10C). Resta decidir se investiga os R$ 3,49 ou se ficam como resíduo documentado.
+1. ~~Primeira Conferência de Caixa real~~ — **feita e fechada em 17/09/2026** (conferência 82,
+   diferença +3,49; ver 10C). O Victor decidiu deixar como **resíduo documentado**: sem
+   investigação e sem lançamento de ajuste.
 2. **Smoke de venda/cancelamento na UI**, com login real, refresh e reentrada.
 3. **Smoke offline em aparelho real**, com rede caindo de verdade (roteiro em `SMOKE_OFFLINE.md`).
 4. **Decidir sobre a venda de R$ 1,00 de 29/07** (seção 10D): confirmar que foi de propósito, ou
