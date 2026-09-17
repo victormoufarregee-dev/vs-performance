@@ -401,7 +401,7 @@ roda essas mesmas travas contra uma cópia mutada sem tocar nos arquivos reais.
 
 Cada arquivo é um bloco `DO` que termina em `raise exception 'RESULTADO_...'` — nada fica
 gravado. Sessões simuladas com `set local role` + `request.jwt.claims` (anon, intruso fora
-da allowlist, Victor, Stefany). Placar de 17/09/2026, depois da 008:
+da allowlist, Victor, Stefany). Placar de 17/09/2026, depois da 010 e da 011:
 
 | arquivo | o que prova | placar |
 |---|---|---|
@@ -409,6 +409,9 @@ da allowlist, Victor, Stefany). Placar de 17/09/2026, depois da 008:
 | `test/sql/conferencia_caixa.test.sql` | Conferência de Caixa (007) | **35 ok** |
 | `test/sql/view_ledger.test.sql` | extrato `v_ledger_victor`: security_invoker, anon/intruso sem leitura, Victor e Stefany veem **todas** as linhas e o saldo corrido final = `vsp_saldo_victor()` — por propriedade, sem contagem fixa | **9 ok** |
 | `test/sql/seguranca_rls.test.sql` | 12 tabelas × anon/intruso × SELECT/INSERT/UPDATE/DELETE, `usuarios_autorizados` inalterável pela API, nenhuma `vsp_*` executável por anon | **102 ok** |
+| `test/sql/portas_rpc.test.sql` | as portas SECURITY DEFINER do app, uma a uma: search_path fixo, anon sem EXECUTE, authenticated com EXECUTE, intruso recusado, nada de negócio muda | **49 ok** |
+| `test/sql/grants.test.sql` | matriz de grants de tabela (010/011): anon sem nada, authenticated no mínimo, sem TRUNCATE/REFERENCES/TRIGGER fora de postgres, `vsp_cc_protege` fechada, tabela nova não nasce aberta, UPDATE por coluna | **19 ok** |
+| `test/sql/derivados.test.sql` | a 011: payload adulterado em val_final/bruto/taxa_val/liq é recusado; custo/lucro/margem do payload são sobrescritos; `vsp_quitar_fiado` recalcula pelo custo histórico, carimba a data, audita, é idempotente e recusa não-fiado, cancelada, intruso e anon | **30 ok** |
 
 ## Provas de mutante (`node test/mutantes.js`)
 

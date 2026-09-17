@@ -51,7 +51,12 @@ begin
 
   -- O2 sem estoque: recusa e não mexe
   begin
-    perform public.vsp_registrar_venda(jsonb_set(jsonb_set(v_venda, '{id}', to_jsonb(id_venda + 100)), '{qtd}', '99999'), 'aud-venda-grande');
+    -- os derivados saem do payload: com a 011 o banco recalcula, e mandar o bruto de 1
+    -- caixa junto com qtd=99999 seria recusado por incoerencia antes de chegar no estoque
+    perform public.vsp_registrar_venda(
+      jsonb_set(jsonb_set(v_venda, '{id}', to_jsonb(id_venda + 100)), '{qtd}', '99999')
+        - 'val_final' - 'bruto' - 'taxa_val' - 'liq' - 'custo' - 'lucro_liq' - 'margem',
+      'aud-venda-grande');
     f := f || text 'O2 vendeu sem estoque';
   exception when others then
     if sqlerrm ilike '%estoque insuficiente%' then ok := ok + 1; else f := f || ('O2 erro inesperado: ' || sqlerrm); end if;
@@ -131,9 +136,12 @@ begin
   r := public.vsp_registrar_venda(jsonb_set(jsonb_set(jsonb_set(v_venda, '{id}', to_jsonb(id_venda_fut)), '{data}', to_jsonb(hoje + 10)), '{cliente}', '"TESTE FUTURA"'), 'aud-venda-fut');
   if public.vsp_caixa_esperado() = caixa0 then ok := ok + 1;
   else f := f || ('O11b VENDA FUTURA ENTROU NO CAIXA DE HOJE: ' || caixa0 || ' -> ' || public.vsp_caixa_esperado()); end if;
+  -- O11c e sobre a FORMULA do caixa, nao sobre permissao: desde a 010 authenticated nao
+  -- tem UPDATE em saidas (o app nunca edita saida — ele apaga e relanca), entao a data e
+  -- movida como dono do banco.
+  execute 'reset role';
   update public.saidas set data = hoje where id = id_fut;
   if public.vsp_caixa_esperado() = caixa0 - 77 then ok := ok + 1; else f := f || ('O11c saida de hoje nao entrou: ' || public.vsp_caixa_esperado()); end if;
-  execute 'reset role';
 
   -- ================================================================ Stefany
   perform set_config('request.jwt.claims', json_build_object('sub', us, 'role', 'authenticated')::text, true);

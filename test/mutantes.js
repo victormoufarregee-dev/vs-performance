@@ -344,8 +344,8 @@ const MUTANTES = [
   {
     id: 'DR-M1',
     titulo: 'RPC de venda no arquivo diverge da produção',
-    oQueMuda: 'a guarda de estoque da 004 vira "< 0": o arquivo passa a descrever uma venda que vende sem estoque',
-    arquivo: 'migrations/004_rpc_operacoes.sql',
+    oQueMuda: 'a guarda de estoque vira "< 0": o arquivo passa a descrever uma venda que vende sem estoque (desde a 011 quem define a venda e a 011, nao a 004)',
+    arquivo: 'migrations/011_derivados_no_banco.sql',
     trocas: [['if v_afetou = 0 then', 'if v_afetou < 0 then', 1]],
   },
   {
@@ -435,8 +435,8 @@ const MUTANTES = [
     oQueMuda: 'numBR perde a leitura de milhar com ponto',
     arquivo: 'index.html',
     trocas: [[
-      '  }else if(/^-?\\d{1,3}(\\.\\d{3})+$/.test(s)){',
-      '  }else if(false){',
+      "    else if(grupos(t,'.')&&ps.slice(1).every(g=>/^\\d{3}$/.test(g))){inteiro=ps.join('');}",
+      "    else if(false){inteiro=ps.join('');}",
       1,
     ]],
   },
@@ -465,6 +465,91 @@ const MUTANTES = [
     arquivo: 'migrations/008_integridade_razao_caixa.sql',
     trocas: [["                   and v.data <= (now() at time zone 'America/Sao_Paulo')::date), 0)", '                   ), 0)', 1]],
   },
+
+  // ---------------------------------------------------------------- 010 e 011 ----
+  {
+    id: 'GR-M1',
+    titulo: 'anon volta a ter privilégio bruto em todas as tabelas',
+    oQueMuda: 'a 010 deixa de revogar os grants padrão de anon',
+    arquivo: 'migrations/010_grants_minimos.sql',
+    trocas: [['revoke all on all tables in schema public from anon;', '-- revogacao removida', 1]],
+  },
+  {
+    id: 'GR-M2',
+    titulo: 'tabela nova volta a nascer aberta para anon',
+    oQueMuda: 'a 010 deixa de mexer no default privilege do schema public',
+    arquivo: 'migrations/010_grants_minimos.sql',
+    trocas: [['alter default privileges for role postgres in schema public revoke all on tables from anon;', '-- default privilege intocado', 1]],
+  },
+  {
+    id: 'GR-M3',
+    titulo: 'authenticated volta a poder escrever em qualquer coluna de vendas',
+    oQueMuda: 'a 011 devolve o UPDATE amplo em vendas',
+    arquivo: 'migrations/011_derivados_no_banco.sql',
+    trocas: [['revoke update on public.vendas from authenticated;', '-- UPDATE amplo mantido', 1]],
+  },
+  {
+    id: 'DV-M1',
+    titulo: 'o banco volta a aceitar o bruto que o navegador mandar',
+    oQueMuda: 'a 011 perde a checagem de coerência do bruto',
+    arquivo: 'migrations/011_derivados_no_banco.sql',
+    trocas: [[
+      "  v_dito := (p_venda->>'bruto')::numeric;\n  if v_dito is not null and abs(v_dito - v_bruto) > 0.01 then\n    raise exception 'valor incoerente: bruto enviado %, calculado %', v_dito, v_bruto; end if;",
+      '  -- checagem removida',
+      1,
+    ]],
+  },
+  {
+    id: 'DV-M2',
+    titulo: 'o custo da venda volta a vir do payload',
+    oQueMuda: 'a 011 usa o custo enviado pelo cliente em vez do produto travado',
+    arquivo: 'migrations/011_derivados_no_banco.sql',
+    trocas: [['  v_custo     := round(v_qtd * v_unit, 2);', "  v_custo     := round(coalesce((p_venda->>'custo')::numeric, v_qtd * v_unit), 2);", 1]],
+  },
+  {
+    id: 'DV-M3',
+    titulo: 'a quitação do fiado volta a ser PATCH direto com lucro do navegador',
+    oQueMuda: 'a tela troca a RPC por sbPatch em vendas',
+    arquivo: 'index.html',
+    trocas: [[
+      "  let res;\n  try{res=await sbRpc('vsp_quitar_fiado',{p_id:id,p_pgto:pg,p_op_id:novoOpId()});}",
+      "  let res;\n  try{const c=v.custo,liq=v.liq-c;res=await sbPatch('vendas',id,{quitado:true,pgto_quitado:pg,lucro_liq:liq,margem:margemPct(v.bruto,liq),quitado_em:getNow().display});}",
+      1,
+    ]],
+  },
+  {
+    id: 'NB-M3',
+    titulo: 'numBR volta a adivinhar que "1,000" é mil',
+    oQueMuda: 'a vírgula com 3 dígitos vira separador de milhar de novo',
+    arquivo: 'index.html',
+    trocas: [[
+      "    if(frac&&!/^\\d{1,2}$/.test(frac))return{ok:false,v:0,motivo:'centavos têm 1 ou 2 dígitos'};",
+      "    if(frac&&/^\\d{3}$/.test(frac)){inteiro=inteiro+frac;frac='';}\n    else if(frac&&!/^\\d{1,2}$/.test(frac))return{ok:false,v:0,motivo:'centavos têm 1 ou 2 dígitos'};",
+      1,
+    ]],
+  },
+  {
+    id: 'NB-M4',
+    titulo: 'a venda deixa de conferir os campos de dinheiro',
+    oQueMuda: 'valor ambíguo volta a virar 0 em silêncio na tela de venda',
+    arquivo: 'index.html',
+    trocas: [[
+      "  const numErro=conferirNums([['vValOrig','preço unitário'],['vDesc','desconto']]);\n  if(numErro){showToast(numErro,'err');return;}",
+      '  const numErro=0;',
+      1,
+    ]],
+  },
+  {
+    id: 'CL-M1',
+    titulo: 'excluir cliente volta a ser o DELETE que a RLS engole em silêncio',
+    oQueMuda: 'a tela troca a inativação por sbDelete e volta a anunciar sucesso',
+    arquivo: 'index.html',
+    trocas: [[
+      "  try{await sbPatch('clientes',id,{ativo:false});if(c)c.ativo=false;if(c)await audit('CLIENTE_INATIVADO',`${c.nome} inativado por ${currentUser}`);}",
+      "  try{await sbDelete('clientes',id);DB.clientes=DB.clientes.filter(x=>x.id!=id);if(c)await audit('CLIENTE_REMOVIDO',`${c.nome} removido por ${currentUser}`);}",
+      1,
+    ]],
+  },
 ];
 
 // =============================================================================
@@ -489,7 +574,11 @@ function preparar(m) {
 
   if (m.trocas) {
     const alvo = path.join(dir, m.arquivo.split('/').join(path.sep));
-    let texto = fs.readFileSync(alvo, 'utf8');
+    // LF sempre: no Windows o autocrlf do Git deixa CRLF na copia de trabalho, e um
+    // trecho escrito aqui com quebra de linha simples passaria a "aparecer 0x" —
+    // mutante NAO APLICADO, que e pior que mutante vivo: nao prova nada e nao
+    // chama atencao sozinho.
+    let texto = fs.readFileSync(alvo, 'utf8').replace(/\r\n/g, '\n');
     m.trocas.forEach(([de, para, vezes]) => {
       const achou = texto.split(de).length - 1;
       if (achou !== vezes) {

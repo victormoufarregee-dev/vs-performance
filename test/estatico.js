@@ -184,20 +184,88 @@ console.log(razaoOk
 //     executa. As portas legitimas do app continuam com EXECUTE para authenticated (a
 //     seguranca delas e allowlist + autor pela sessao, provada em test/sql/).
 const PORTAS_DO_APP = ['vsp_ator', 'vsp_autorizado', 'vsp_caixa_esperado', 'vsp_cancelar_venda', 'vsp_estornar_compra',
-  'vsp_invalidar_conferencia_caixa', 'vsp_reembolsar_victor', 'vsp_registrar_compra', 'vsp_registrar_conferencia_caixa',
-  'vsp_registrar_venda', 'vsp_saldo_victor'];
+  'vsp_invalidar_conferencia_caixa', 'vsp_quitar_fiado', 'vsp_reembolsar_victor', 'vsp_registrar_compra',
+  'vsp_registrar_conferencia_caixa', 'vsp_registrar_venda', 'vsp_saldo_victor'];
 const permProblemas = [];
 const sql009Arq = path.join(MIGRACOES, '009_backfill_fechado.sql');
 const sql009 = fs.existsSync(sql009Arq) ? fs.readFileSync(sql009Arq, 'utf8').replace(/\r\n/g, '\n').replace(/^\s*--.*$/gm, '') : '';
 if (!sql009.includes('revoke execute on function public.vsp_ledger_backfill() from public, anon, authenticated'))
   permProblemas.push('009 nao revoga o backfill de authenticated');
-const comAuth = Object.entries(fotoContrato.funcoes).filter(([, v]) => v.authenticated && v.ret !== 'trigger')
+// Sem excecao para trigger function: ate a 010, vsp_cc_protege() tinha EXECUTE para PUBLIC
+// (e portanto para anon) e escapava exatamente por essa excecao.
+const comAuth = Object.entries(fotoContrato.funcoes).filter(([, v]) => v.authenticated)
   .map(([k]) => k.split('(')[0]).sort();
 const sobrando = comAuth.filter((n) => !PORTAS_DO_APP.includes(n));
 if (sobrando.length) permProblemas.push('authenticated executa em producao: ' + sobrando.join(', '));
+const comAnon = Object.entries(fotoContrato.funcoes).filter(([, v]) => v.anon).map(([k]) => k.split('(')[0]);
+if (comAnon.length) permProblemas.push('anon executa em producao: ' + comAnon.join(', '));
 const permOk = !permProblemas.length;
 console.log(permOk
-  ? 'PERMISSOES: ok, authenticated so executa as ' + comAuth.length + ' portas do app; backfill fechado (009)'
+  ? 'PERMISSOES: ok, authenticated so executa as ' + comAuth.length + ' portas do app; anon nenhuma; backfill fechado (009)'
   : 'PERMISSOES QUEBRADAS: ' + permProblemas.join('; '));
 
-process.exit(!permOk || erros || !razaoOk || !contratoOk || !confOk || !filaOk || !identidadeOk || ausentes.length || achados.length || semId.length || voltou.length || faltam.length || legadoVoltou.length || semLedger.length ? 1 : 0);
+// 14) grants de tabela (010 e 011). A RLS ja segurava, mas o privilegio bruto era ALL para
+//     anon e authenticated em tudo. O alvo abaixo e a intersecao entre o que a policy
+//     permite e o que o app chama pelo PostgREST — e a foto de producao tem de bater com ele.
+const GRANTS_ALVO = {
+  audit_log: 'INSERT,SELECT', backups: 'DELETE,INSERT,SELECT', clientes: 'INSERT,SELECT,UPDATE',
+  conferencias_caixa: 'SELECT', config: 'SELECT,UPDATE', estoque: 'SELECT', ledger_victor: 'SELECT',
+  produtos: 'INSERT,SELECT,UPDATE', reposicoes: 'SELECT', saidas: 'DELETE,INSERT,SELECT',
+  usuarios_autorizados: 'SELECT', vendas: 'SELECT', v_ledger_victor: 'SELECT',
+};
+const COLUNAS_ALVO = { vendas: 'vence_em', reposicoes: 'lote,nota_lote,validade' };
+const grantProblemas = [];
+const foto = fotoContrato.grants;
+if (!foto) grantProblemas.push('a foto de producao nao tem a secao de grants');
+else {
+  if (foto.anon_privilegios !== 0) grantProblemas.push('anon tem ' + foto.anon_privilegios + ' privilegio(s) de tabela em producao');
+  Object.entries(GRANTS_ALVO).forEach(([t, want]) => {
+    const got = foto.authenticated[t] || '(nenhum)';
+    if (got !== want) grantProblemas.push(t + ': authenticated=' + got + ' esperado ' + want);
+  });
+  Object.keys(foto.authenticated).filter((t) => !GRANTS_ALVO[t]).forEach((t) => grantProblemas.push('tabela fora do alvo com grant: ' + t));
+  Object.entries(COLUNAS_ALVO).forEach(([t, want]) => {
+    const got = (foto.authenticated_update_por_coluna || {})[t] || '(nenhuma)';
+    if (got !== want) grantProblemas.push(t + ': UPDATE por coluna=' + got + ' esperado ' + want);
+  });
+}
+const sql010Arq = path.join(MIGRACOES, '010_grants_minimos.sql');
+const sql010 = fs.existsSync(sql010Arq) ? fs.readFileSync(sql010Arq, 'utf8').replace(/\r\n/g, '\n').replace(/^\s*--.*$/gm, '') : '';
+[['revoke all on all tables in schema public from anon;', '010 nao revoga tudo de anon'],
+ ['revoke all on all tables in schema public from authenticated;', '010 nao zera authenticated antes de dar o minimo'],
+ ['revoke all on function public.vsp_cc_protege() from public, anon, authenticated;', '010 nao fecha vsp_cc_protege'],
+ ['alter default privileges for role postgres in schema public revoke all on tables from anon;', '010 nao fecha tabela nova para anon'],
+].filter(([t]) => !sql010.includes(t)).forEach(([, m]) => grantProblemas.push(m));
+const sql011Arq = path.join(MIGRACOES, '011_derivados_no_banco.sql');
+const sql011 = fs.existsSync(sql011Arq) ? fs.readFileSync(sql011Arq, 'utf8').replace(/\r\n/g, '\n').replace(/^\s*--.*$/gm, '') : '';
+[['revoke update on public.vendas from authenticated;', '011 nao tira o UPDATE amplo de vendas'],
+ ['grant  update (vence_em) on public.vendas to authenticated;', '011 nao devolve o vencimento do fiado'],
+ ['revoke update on public.reposicoes from authenticated;', '011 nao tira o UPDATE amplo de reposicoes'],
+].filter(([t]) => !sql011.includes(t)).forEach(([, m]) => grantProblemas.push(m));
+const grantOk = !grantProblemas.length;
+console.log(grantOk
+  ? 'GRANTS: ok, anon sem nenhum privilegio; authenticated no minimo em ' + Object.keys(GRANTS_ALVO).length + ' tabelas; UPDATE por coluna em vendas e reposicoes'
+  : 'GRANTS QUEBRADOS: ' + grantProblemas.join('; '));
+
+// 15) dinheiro derivado (011). O app informa fato; o banco calcula val_final, bruto, custo,
+//     taxa_val, liq, lucro_liq e margem — e recusa payload incoerente. A quitacao do fiado
+//     deixou de ser PATCH direto em vendas.
+const derivProblemas = [];
+[['v_val_final := round(greatest(0, v_val_orig - v_desc), 2);', 'o banco nao calcula val_final'],
+ ['v_bruto     := round(v_qtd * v_val_final, 2);', 'o banco nao calcula bruto'],
+ ['v_custo     := round(v_qtd * v_unit, 2);', 'o custo nao vem do produto travado'],
+ ['raise exception \'valor incoerente: bruto enviado %, calculado %\'', 'bruto adulterado nao e recusado'],
+ ['raise exception \'valor incoerente: liq enviado %, calculado %\'', 'liq adulterado nao e recusado'],
+ ['create or replace function public.vsp_quitar_fiado(p_id bigint, p_pgto text, p_op_id text)', 'nao existe RPC de quitacao'],
+].filter(([t]) => !sql011.includes(t)).forEach(([, m]) => derivProblemas.push(m));
+if (/sbPatch\('vendas',\s*id,\s*\{quitado/.test(h)) derivProblemas.push('a tela ainda quita o fiado por PATCH direto');
+if (!/sbRpc\('vsp_quitar_fiado'/.test(h)) derivProblemas.push('a tela nao usa a RPC de quitacao');
+if (!/function numBRx\(v\)/.test(h)) derivProblemas.push('numBR nao tem a versao que recusa entrada ambigua');
+if (!/conferirNums\(\[\['vValOrig'/.test(h)) derivProblemas.push('a venda nao confere os campos de dinheiro');
+if (/sbDelete\('clientes'/.test(h)) derivProblemas.push('a tela ainda tenta DELETE em clientes (a RLS engole em silencio)');
+const derivOk = !derivProblemas.length;
+console.log(derivOk
+  ? 'DINHEIRO DERIVADO: ok, venda e quitacao calculadas no banco, payload incoerente recusado, numBR estrito'
+  : 'DINHEIRO DERIVADO QUEBRADO: ' + derivProblemas.join('; '));
+
+process.exit(!derivOk || !grantOk || !permOk || erros || !razaoOk || !contratoOk || !confOk || !filaOk || !identidadeOk || ausentes.length || achados.length || semId.length || voltou.length || faltam.length || legadoVoltou.length || semLedger.length ? 1 : 0);

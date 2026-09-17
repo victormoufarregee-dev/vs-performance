@@ -657,7 +657,7 @@ input,select,textarea{font-size:16px;padding:11px 12px}
         <div class="ir"><span>Status</span><span id="dbStatus" style="color:var(--g)">Conectado ✓</span></div>
       </div>
       <div class="card"><p class="ct">Backup dos dados</p>
-        <p style="font-size:12px;color:var(--sub);margin-bottom:8px">O app grava uma c&oacute;pia operacional dos principais dados (produtos, vendas, clientes, sa&iacute;das, compras e Conta do Victor) <strong>na pr&oacute;pria nuvem, sozinho, toda semana</strong>. Voc&ecirc; tamb&eacute;m pode baixar uma c&oacute;pia para o computador quando quiser (essa n&atilde;o leva a Conta do Victor). N&atilde;o &eacute; c&oacute;pia completa do sistema e o app n&atilde;o restaura por ela: confer&ecirc;ncias, configura&ccedil;&otilde;es e auditoria ficam de fora. A recupera&ccedil;&atilde;o completa &eacute; o backup di&aacute;rio do banco no Supabase.</p>
+        <p style="font-size:12px;color:var(--sub);margin-bottom:8px">O app grava uma c&oacute;pia operacional <strong>na pr&oacute;pria nuvem, sozinho, toda semana</strong>, e a c&oacute;pia que voc&ecirc; baixa para o computador tem exatamente o mesmo conte&uacute;do: produtos, vendas, clientes, sa&iacute;das, compras, Conta do Victor, confer&ecirc;ncias de caixa e configura&ccedil;&otilde;es. N&atilde;o &eacute; c&oacute;pia completa do sistema e o app n&atilde;o restaura por ela: a auditoria fica de fora (o app s&oacute; tem as &uacute;ltimas 500 linhas) e a allowlist de usu&aacute;rios tamb&eacute;m. O pr&oacute;prio arquivo diz isso no campo <code>escopo</code>. A recupera&ccedil;&atilde;o completa &eacute; o backup di&aacute;rio do banco no Supabase.</p>
         <div id="cfgBackupInfo" style="margin-bottom:10px"></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
           <button class="btn" onclick="backupAgoraNuvem()"><i class="ti ti-cloud-upload"></i> Gravar c&oacute;pia na nuvem</button>
@@ -1309,22 +1309,64 @@ function R(v){return'R$ '+Number(v||0).toFixed(2);}
 // Números em pt-BR: aceita "150,00", "150.00", "1.250,50" e "1250". Campos de dinheiro são
 // type="text" inputmode="decimal" justamente porque type="number" DESCARTA a vírgula: quem
 // digitava 150,00 ficava com o campo vazio e recebia "preencha os campos obrigatórios".
-function numBR(v){
-  if(typeof v==='number')return isFinite(v)?v:0;
-  let s=String(v==null?'':v).trim();if(!s)return 0;
-  s=s.replace(/[^\d.,-]/g,'');
-  const vir=s.lastIndexOf(','),pon=s.lastIndexOf('.');
-  if(vir>-1&&pon>-1){ // o separador decimal é o que vier por último
-    s=(vir>pon)?s.replace(/\./g,'').replace(',','.'):s.replace(/,/g,'');
-  }else if(vir>-1){
-    s=(s.length-vir-1===3&&s.split(',').length===2&&/^\d{1,3},\d{3}$/.test(s))?s.replace(',',''):s.replace(',','.');
-  }else if(/^-?\d{1,3}(\.\d{3})+$/.test(s)){ // so ponto, em grupos de 3: milhar ("1.250" = mil duzentos e cinquenta)
-    s=s.replace(/\./g,'');
-  }
-  const n=parseFloat(s);return isFinite(n)?n:0;
+// A gramática (numBRx devolve {ok, v, motivo}; numBR devolve só o número, 0 quando recusa):
+//   "1.250"       milhar   → 1250      (ponto com grupo de 3 dígitos)
+//   "1.250,50"    milhar+centavo → 1250.50
+//   "1250,50"     centavo  → 1250.50
+//   "12.50" "1,5" centavo  → 12.50 / 1.5   (1 ou 2 dígitos depois do separador)
+//   "12.345.678,90" e "12,345,678.90" (estilo EUA) → 12345678.90
+// E RECUSA em vez de adivinhar, porque adivinhar aqui erra por 1000x:
+//   "1,000"  vírgula com 3 dígitos é ambíguo (mil? ou 1 com 3 casas?)  — era 1000
+//   "0,001"  idem                                                     — era 1
+//   "1,234,567" vírgula repetida sem ponto                            — era 1.234
+//   "1.2.3"  grupos de milhar quebrados                               — era 1.2
+//   "1e3"    notação científica (o filtro antigo virava "13")         — era 13
+function numBRx(v){
+  if(typeof v==='number')return isFinite(v)?{ok:true,v}:{ok:false,v:0,motivo:'número inválido'};
+  const s=String(v==null?'':v).trim();
+  if(!s)return{ok:true,v:0};
+  const limpo=s.replace(/(R\$|\s| )/g,'');
+  if(!limpo)return{ok:true,v:0};
+  if(/[^\d.,-]/.test(limpo))return{ok:false,v:0,motivo:'só números, ponto e vírgula'};
+  const neg=limpo[0]==='-',t=neg?limpo.slice(1):limpo;
+  if(t.includes('-'))return{ok:false,v:0,motivo:'sinal fora de lugar'};
+  if(!/\d/.test(t))return{ok:false,v:0,motivo:'sem dígito'};
+  const grupos=(txt,sep)=>{const ps=txt.split(sep);return ps.length===1||(/^\d{1,3}$/.test(ps[0])&&ps.slice(1).every(g=>/^\d{3}$/.test(g)));};
+  const nPon=(t.match(/\./g)||[]).length,nVir=(t.match(/,/g)||[]).length;
+  let inteiro,frac='';
+  if(nPon&&nVir){                       // o último separador é o decimal, o outro é milhar
+    const dec=t.lastIndexOf(',')>t.lastIndexOf('.')?',':'.';
+    const mil=dec===','?'.':',';
+    if((dec===','?nVir:nPon)!==1)return{ok:false,v:0,motivo:'separador decimal repetido'};
+    const i=t.lastIndexOf(dec);inteiro=t.slice(0,i);frac=t.slice(i+1);
+    if(!/^\d{1,2}$/.test(frac))return{ok:false,v:0,motivo:'centavos têm 1 ou 2 dígitos'};
+    if(!grupos(inteiro,mil))return{ok:false,v:0,motivo:'milhar em grupos de 3'};
+    inteiro=inteiro.split(mil).join('');
+  }else if(nVir){                       // só vírgula: decimal de 1–2 casas, nunca milhar
+    if(nVir>1)return{ok:false,v:0,motivo:'vírgula repetida'};
+    const i=t.indexOf(',');inteiro=t.slice(0,i);frac=t.slice(i+1);
+    if(frac&&!/^\d{1,2}$/.test(frac))return{ok:false,v:0,motivo:'centavos têm 1 ou 2 dígitos'};
+    if(!/^\d*$/.test(inteiro))return{ok:false,v:0,motivo:'parte inteira inválida'};
+  }else if(nPon){                       // só ponto: 1–2 dígitos é centavo, 3 é milhar
+    const ps=t.split('.');
+    if(nPon===1&&/^\d{1,2}$/.test(ps[1])&&/^\d*$/.test(ps[0])){inteiro=ps[0];frac=ps[1];}
+    else if(grupos(t,'.')&&ps.slice(1).every(g=>/^\d{3}$/.test(g))){inteiro=ps.join('');}
+    else return{ok:false,v:0,motivo:'milhar em grupos de 3, centavos em 1 ou 2'};
+  }else{inteiro=t;}
+  const n=parseFloat((inteiro||'0')+'.'+(frac||'0'));
+  if(!isFinite(n))return{ok:false,v:0,motivo:'número grande demais'};
+  return{ok:true,v:neg?-n:n};
 }
+function numBR(v){const r=numBRx(v);return r.ok?r.v:0;}
 // Lê um campo de dinheiro pelo id, já normalizado.
 function valNum(id){const e=document.getElementById(id);return e?numBR(e.value):0;}
+function valNumX(id){const e=document.getElementById(id);return e?numBRx(e.value):{ok:true,v:0};}
+// Recusa a operação quando algum campo de dinheiro está ambíguo, em vez de virar 0 calado.
+// pares: [[idDoCampo, 'como o usuário chama o campo'], ...]. Devolve '' ou a mensagem.
+function conferirNums(pares){
+  for(const[id,rotulo] of pares){const r=valNumX(id);if(!r.ok)return`Não entendi o ${rotulo}: ${r.motivo}. Escreva como 1.250,50.`;}
+  return'';
+}
 function calcMarg(l,c){return c?((l-c)/c)*100:0;}
 function margemPct(bruto,lucro){return bruto?(lucro/bruto*100):0;} // margem sobre a venda (% do valor vendido)
 function mPill(p){const cl=p>=40?'mp-green':p>=20?'mp-amber':'mp-red';return`<span class="${cl}">${Number(p||0).toFixed(1)}%</span>`;}
@@ -1887,7 +1929,7 @@ function tipoOptions(p){return p&&p.vendeFrasco?`<option value="caixa">Caixa fec
 // VENDAS
 // ============================================================
 function onCliSel(){const v=document.getElementById('vCliSel').value;document.getElementById('newCliBox').style.display=v?'none':'block';if(v){document.getElementById('vCliNome').value='';document.getElementById('vCliWpp').value='';}}
-function populateCliSelect(){const el=document.getElementById('vCliSel');el.innerHTML='<option value="">— Novo cliente / preencher abaixo —</option>'+DB.clientes.map(c=>`<option value="${c.id}">${c.nome} · ${c.tel}</option>`).join('');}
+function populateCliSelect(){const el=document.getElementById('vCliSel');el.innerHTML='<option value="">— Novo cliente / preencher abaixo —</option>'+DB.clientes.filter(c=>c.ativo!==false).map(c=>`<option value="${c.id}">${c.nome} · ${c.tel}</option>`).join('');}
 function updateVF(){
   const p=getProd(document.getElementById('vProd').value);
   const tipoSel=document.getElementById('vTipo');
@@ -2001,6 +2043,10 @@ async function regVenda(){
   const t=document.getElementById('vTipo').value,q=parseInt(document.getElementById('vQtd').value)||0,vo=valNum('vValOrig')||0,dc=valNum('vDesc')||0,vf=Math.max(0,vo-dc),dt=document.getElementById('vData').value,obs=document.getElementById('vObs').value.trim(),pg=document.getElementById('vPgto').value,pa=pg==='parcelado'?parseInt(document.getElementById('vParcelas').value):null,tx=pg==='fiado'?0:(parseFloat(document.getElementById('vTaxa').value)||0),tq=document.getElementById('vTaxaQuem').value;
   // C6 — TODA validação acontece ANTES de criar o cliente. Antes, um preço inválido gravava
   // o cliente e abortava a venda; ao tentar de novo nascia um cliente duplicado.
+  // Campo de dinheiro ambíguo não pode virar 0 calado: "1,000" é mil ou é um? Vem ANTES do
+  // "falta preencher", senão o 0 de recusa se disfarça de campo vazio.
+  const numErro=conferirNums([['vValOrig','preço unitário'],['vDesc','desconto']]);
+  if(numErro){showToast(numErro,'err');return;}
   if(!q||!vo||!dt){
     const falta=[];if(!q)falta.push('quantidade');if(!vo)falta.push('preço unitário');if(!dt)falta.push('data');
     showToast('Falta preencher: '+falta.join(', ')+'.','err');return;
@@ -2191,10 +2237,24 @@ function exportClientes(){dlCSV('vs_clientes.csv',['Nome','WhatsApp','Compras','
 function exportEstoque(){dlCSV('vs_estoque.csv',['Produto','Caixas','Frascos','Total frascos eq.','Custo caixa','Custo frasco','Valor em estoque'],DB.produtos.map(p=>[p.nome,p.caixas,p.frascos,totFP(p),p.custoCaixa.toFixed(2),p.custoFrasco.toFixed(2),valorEstProd(p).toFixed(2)]));}
 function exportProdutos(){dlCSV('vs_produtos.csv',['Produto','Vende frasco','Frascos por caixa','Custo caixa','Custo frasco','Caixas','Frascos','Ativo'],DB.produtos.map(p=>[p.nome,p.vendeFrasco?'Sim':'Não',p.fpc,p.custoCaixa.toFixed(2),p.custoFrasco.toFixed(2),p.caixas,p.frascos,p.ativo?'Sim':'Não']));}
 // ---- BACKUP AUTOMATICO (grava uma copia na propria nuvem) ----
+// EXPORTAÇÃO OPERACIONAL — não é "backup completo", e o campo `escopo` diz isso dentro do
+// próprio arquivo. Entra o que o app carrega e sabe reconstruir para leitura.
+// O que fica FORA, e por quê:
+//   auditoria  — o app só tem as últimas 500 linhas; exportar um pedaço chamando de
+//                "auditoria" seria mentira. A íntegra fica no banco.
+//   usuários   — allowlist de uid é ato administrativo, não sai por arquivo.
+//   estoque    — a tabela `estoque` é legado; o estoque de verdade está em `produtos`
+//                (caixas/frascos), que vai junto.
+// NUNCA entram senha, token, chave de serviço nem sessão — nada disso passa pelo app.
+// Não existe restauração: reimportar mexeria em dinheiro real sem prévia nem atomicidade.
 function montarDump(){
   const{display}=getNow();
   return {app:'VS Performance',versao:APP_VERSION,exportado_em:display,por:currentUser,
-    produtos:DB.produtos,vendas:DB.vendas,clientes:DB.clientes,saidas:DB.saidas,reposicoes:DB.reposicoes,ledger:ledgerMovs()};
+    escopo:{inclui:['produtos','vendas','clientes','saidas','reposicoes','ledger','conferencias','config'],
+            fora:['auditoria (o app so tem as ultimas 500 linhas)','usuarios autorizados','senha/token (o app nao tem)'],
+            restauracao:'nao ha; este arquivo e para consulta e conferencia'},
+    produtos:DB.produtos,vendas:DB.vendas,clientes:DB.clientes,saidas:DB.saidas,reposicoes:DB.reposicoes,
+    ledger:ledgerMovs(),conferencias:Array.isArray(DB.conferencias)?DB.conferencias:[],config:DB.config||null};
 }
 async function gravarBackupNuvem(tipo){
   const{display}=getNow();
@@ -2246,7 +2306,7 @@ async function baixarBackupNuvem(id){
   }catch(e){hideLoading();showToast('Erro ao baixar: '+(e.message||e),'err');}
 }
 
-async function baixarBackup(){const dump={app:'VS Performance',exportado_em:getNow().display,por:currentUser,produtos:DB.produtos,vendas:DB.vendas,clientes:DB.clientes,saidas:DB.saidas,reposicoes:DB.reposicoes};const blob=new Blob([JSON.stringify(dump,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='vs_backup_'+today()+'.json';a.click();const{display}=getNow();try{await sbPatch('config',1,{last_backup:display});DB.config.last_backup=display;}catch(e){}await audit('EXPORTACAO','Copia dos principais dados (JSON) baixada por '+currentUser);renderAlertas();showToast('Backup baixado!');}
+async function baixarBackup(){const dump=montarDump();const blob=new Blob([JSON.stringify(dump,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='vs_backup_'+today()+'.json';a.click();const{display}=getNow();try{await sbPatch('config',1,{last_backup:display});DB.config.last_backup=display;}catch(e){}await audit('EXPORTACAO','Copia dos principais dados (JSON) baixada por '+currentUser);renderAlertas();showToast('Backup baixado!');}
 function exportFin(){const tm={prolabore:'Pró-labore',retirada:'Retirada',fornecedor:'Fornecedor',despesa:'Despesa',imposto:'Imposto',outros:'Outros'};dlCSV('vs_financeiro.csv',['Data','Tipo','Sócio/Resp.','Descrição','Pgto','Valor'],DB.saidas.map(s=>[fmtD(s.data),tm[s.tipo]||s.tipo,s.socio||'—',s.desc,s.pgto,s.val.toFixed(2)]));}
 function exportFiado(){const fi=DB.vendas.filter(v=>v.pgto==='fiado'&&!v.quitado&&!v.cancelada);dlCSV('vs_fiado.csv',['Cliente','WhatsApp','Produto','Tipo','Qtd','Valor','Data'],fi.map(v=>[v.cliente,v.wpp,prodNome(v.prod),tipoLabel(v.tipo),v.qtd,v.bruto.toFixed(2),fmtD(v.data)]));}
 function exportCancel(){const cans=DB.vendas.filter(v=>v.cancelada);dlCSV('vs_cancelamentos.csv',['Data cancelamento','Cancelado por','Data venda','Produto','Tipo','Qtd','Cliente','WhatsApp','Valor','Motivo'],cans.map(v=>[v.canceladaEm||'',v.canceladaPor||'',fmtD(v.data),prodNome(v.prod),tipoLabel(v.tipo),v.qtd,v.cliente,v.wpp,v.bruto.toFixed(2),v.canceladaMotivo||'']));}
@@ -2263,6 +2323,7 @@ function listaFornecedores(){const set=new Set(['Victor','Hassan']);DB.reposicoe
 function populateFornecedores(){const dl=document.getElementById('fornecedoresList');if(dl)dl.innerHTML=listaFornecedores().map(f=>`<option value="${f}"></option>`).join('');}
 async function regSaida(){
   const tipo=document.getElementById('fTipo').value,socio=tipo==='fornecedor'?document.getElementById('fForn').value.trim():document.getElementById('fSocio').value,desc=document.getElementById('fDesc').value.trim(),data=document.getElementById('fData').value,val=valNum('fVal')||0,pgto=document.getElementById('fPgto').value;
+  {const e=conferirNums([['fVal','valor']]);if(e){showToast(e,'err');return;}}
   if(!desc||!val||!data){showToast('Preencha descrição, valor e data.','err');return;}
   if(tipo==='fornecedor'&&!socio){showToast('Informe o fornecedor.','err');return;}
   showLoading('Salvando...');
@@ -3155,6 +3216,7 @@ function calcRep(){
 async function confReposicao(){
   const p=getProd(document.getElementById('repProd').value),t=document.getElementById('repTipo').value,q=parseInt(document.getElementById('repQtd').value)||0,cu=valNum('repCustUnit')||0,forn=document.getElementById('repForn').value.trim(),data=document.getElementById('repData').value,obs=document.getElementById('repObs').value.trim();
   if(!p){showToast('Selecione o produto.','err');return;}
+  {const e=conferirNums([['repCustUnit','custo unitário'],['repFrete','frete']]);if(e){showToast(e,'err');return;}}
   if(!q||!cu||!data){showToast('Preencha quantidade, custo e data.','err');return;}
   // Aviso de possível duplicidade (mesma compra lançada 2x)
   const jaExiste=DB.reposicoes.some(r=>r.prod===p.id&&r.tipo===t&&+r.qtd===q&&Math.abs((+r.custTotal||0)-q*cu)<1&&r.data===data);
@@ -3242,6 +3304,7 @@ function editProduto(id){const p=getProd(id);if(!p)return;document.getElementByI
 async function salvarProduto(){
   const nome=document.getElementById('prodNome').value.trim(),vende=document.getElementById('prodVende').value,frac=vende==='ambos',fpc=frac?(parseInt(document.getElementById('prodFpc').value)||1):1,cc=valNum('prodCustoCaixa')||0,pp=valNum('prodPreco')||0,mn=parseInt(document.getElementById('prodMin').value)||0,ct=parseInt(document.getElementById('prodCrit').value)||0;
   if(!nome){showToast('Informe o nome do produto.','err');return;}
+  {const e=conferirNums([['prodCustoCaixa','custo da caixa'],['prodPreco','preço padrão']]);if(e){showToast(e,'err');return;}}
   if(!cc){showToast('Informe o custo da caixa.','err');return;}
   const cf=frac?+(cc/fpc).toFixed(2):cc;
   const eid=document.getElementById('prodEditId').value;
@@ -3310,10 +3373,15 @@ function abrirQuitar(id){const v=DB.vendas.find(x=>x.id===id);if(!v)return;docum
 async function confirmarQuitar(){
   const id=parseInt(document.getElementById('qVendaId').value),pg=document.getElementById('qPgto').value,v=DB.vendas.find(x=>x.id===id);if(!v)return;
   showLoading('Quitando...');
-  const c=v.custo,liq=v.liq-c,mg=margemPct(v.bruto,liq),{display}=getNow();
-  try{await sbPatch('vendas',id,{quitado:true,pgto_quitado:pg,lucro_liq:liq,margem:mg,quitado_em:display});v.quitado=true;v.pgtoQuitado=pg;v.lucroLiq=liq;v.margem=mg;v.quitadoEm=display;await audit('QUITAR',`Fiado de ${v.cliente} (${R(v.bruto)}) quitado via ${pg}`);}
-  catch(e){hideLoading();showToast('Erro ao quitar.','err');return;}
-  hideLoading();closeModal('quitarModal');renderAll();showToast(`Pagamento de ${v.cliente} confirmado!`);
+  // O lucro do fiado é recalculado no BANCO, pelo custo histórico gravado na própria venda,
+  // e a data de quitação é carimbada lá (fuso de São Paulo). Até a 011 isto era um PATCH
+  // direto mandando lucro_liq e margem calculados aqui — o banco aceitava qualquer número.
+  let res;
+  try{res=await sbRpc('vsp_quitar_fiado',{p_id:id,p_pgto:pg,p_op_id:novoOpId()});}
+  catch(e){hideLoading();showToast('Não consegui quitar: '+(e.message||e)+'. Nada foi alterado.','err');return;}
+  if(res&&res.venda){const nv=mapVenda(res.venda);const alvo=DB.vendas.find(x=>x.id===nv.id);if(alvo)Object.assign(alvo,nv);}
+  hideLoading();closeModal('quitarModal');renderAll();
+  showToast(res&&res.repetida?'Este fiado já estava quitado.':`Pagamento de ${v.cliente} confirmado!`);
 }
 
 // ============================================================
@@ -3356,10 +3424,13 @@ function clienteInfo(c){
   return{vs,n,lucro,tf,ultima,dias,prodTop,tags};
 }
 function renderCli(){
-  const q=document.getElementById('fCli').value.toLowerCase(),cs=DB.clientes.filter(c=>!q||c.nome.toLowerCase().includes(q)||c.tel.includes(q));
+  // Cliente inativado continua na lista, com o selo e o botão de reativar: o cadastro
+  // nunca é apagado (as vendas apontam para ele por FK), só sai do seletor de venda.
+  const q=document.getElementById('fCli').value.toLowerCase(),cs=DB.clientes.filter(c=>!q||c.nome.toLowerCase().includes(q)||c.tel.includes(q))
+    .slice().sort((a,b)=>(a.ativo===false?1:0)-(b.ativo===false?1:0));
   const el=document.getElementById('cliList');
   if(!cs.length){el.innerHTML='<p style="font-size:13px;color:var(--sub);text-align:center;padding:1.5rem">Nenhum cliente cadastrado.</p>';return;}
-  el.innerHTML=cs.map(c=>{const info=clienteInfo(c),wn=c.tel.replace(/\D/g,''),tagsHtml=info.tags.slice(0,4).map(t=>`<span class="${t.cls}" style="font-size:9px;padding:1px 6px;margin-left:3px">${t.label}</span>`).join('');return`<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap${info.tf?';border-color:#FAC775':''}"><div style="display:flex;align-items:center;gap:10px"><div class="cli-av">${c.nome.slice(0,2).toUpperCase()}</div><div><p style="font-size:14px;font-weight:500">${c.nome}${tagsHtml}</p><p style="font-size:12px;color:var(--sub)">${c.tel} · ${info.n} compra(s) · lucro ${R(info.lucro)}${info.ultima?' · última '+fmtD(info.ultima.data):''}${info.prodTop?' · + '+prodNome(info.prodTop):''}</p></div></div><div style="display:flex;gap:6px"><a href="https://wa.me/55${wn}" target="_blank" class="btn-wpp"><i class="ti ti-brand-whatsapp"></i></a><button class="btn-s" style="font-size:11px;padding:4px 8px" onclick="verCli(${c.id})"><i class="ti ti-eye"></i></button><button class="btn-s" style="font-size:11px;padding:4px 8px" onclick="editCli(${c.id})"><i class="ti ti-edit"></i></button><button class="btn-d" onclick="delCli(${c.id})"><i class="ti ti-trash"></i></button></div></div>`;}).join('');
+  el.innerHTML=cs.map(c=>{const info=clienteInfo(c),wn=c.tel.replace(/\D/g,''),tagsHtml=info.tags.slice(0,4).map(t=>`<span class="${t.cls}" style="font-size:9px;padding:1px 6px;margin-left:3px">${t.label}</span>`).join('');return`<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap${info.tf?';border-color:#FAC775':''}"><div style="display:flex;align-items:center;gap:10px"><div class="cli-av">${c.nome.slice(0,2).toUpperCase()}</div><div><p style="font-size:14px;font-weight:500">${c.nome} ${c.ativo===false?'<span class="badge bcan">inativo</span>':''}${tagsHtml}</p><p style="font-size:12px;color:var(--sub)">${c.tel} · ${info.n} compra(s) · lucro ${R(info.lucro)}${info.ultima?' · última '+fmtD(info.ultima.data):''}${info.prodTop?' · + '+prodNome(info.prodTop):''}</p></div></div><div style="display:flex;gap:6px"><a href="https://wa.me/55${wn}" target="_blank" class="btn-wpp"><i class="ti ti-brand-whatsapp"></i></a><button class="btn-s" style="font-size:11px;padding:4px 8px" onclick="verCli(${c.id})"><i class="ti ti-eye"></i></button><button class="btn-s" style="font-size:11px;padding:4px 8px" onclick="editCli(${c.id})"><i class="ti ti-edit"></i></button>${c.ativo===false?`<button class="btn-s" style="font-size:11px;padding:4px 8px" onclick="reativarCli(${c.id})"><i class="ti ti-rotate"></i> Reativar</button>`:`<button class="btn-d" onclick="delCli(${c.id})"><i class="ti ti-trash"></i></button>`}</div></div>`;}).join('');
 }
 // ============================================================
 // INTELIGENCIA DE CLIENTES — ranking, ticket medio e curva ABC
@@ -3462,19 +3533,29 @@ async function delCli(id){
   const emAberto=DB.vendas.filter(v=>v.cliId==id&&v.pgto==='fiado'&&!v.quitado&&!v.cancelada);
   if(emAberto.length){
     const tot=emAberto.reduce((a,v)=>a+(+v.bruto||0),0);
-    if(!confirm('ATENCAO: este cliente ainda tem '+emAberto.length+' fiado(s) em aberto, somando '+R(tot)+'.\n\nSe remover, a divida continua aparecendo na aba Fiado, mas voce perde o cadastro (telefone e historico).\n\nRemover mesmo assim?'))return;
+    if(!confirm('ATENCAO: este cliente ainda tem '+emAberto.length+' fiado(s) em aberto, somando '+R(tot)+'.\n\nInativar mesmo assim? A divida continua aparecendo na aba Fiado.'))return;
   }
-  // C5 — cliente com histórico nunca sai sem confirmação: as vendas dele ficam órfãs
-  // e o telefone se perde para sempre.
+  // C5 — cliente com histórico nunca sai sem confirmação.
   const c0=DB.clientes.find(x=>x.id==id);
   const compras=DB.vendas.filter(v=>v.cliId==id&&!v.cancelada);
   const gasto=compras.reduce((a,v)=>a+(+v.bruto||0),0);
-  if(!confirm(`Excluir o cliente ${c0?c0.nome:''}?\n\n${compras.length} compra(s) · ${R(gasto)} em vendas${c0&&c0.wpp?'\nWhatsApp '+c0.wpp:''}\n\nO histórico de vendas continua, mas fica sem dono: você perde o telefone e o vínculo. Não dá para desfazer.`))return;
-  showLoading('Removendo...');
+  if(!confirm(`Inativar o cliente ${c0?c0.nome:''}?\n\n${compras.length} compra(s) · ${R(gasto)} em vendas${c0&&c0.tel?'\nWhatsApp '+c0.tel:''}\n\nEle sai da lista de escolha na hora de vender, mas o cadastro e o histórico ficam inteiros — dá para reativar depois.`))return;
+  showLoading('Inativando...');
   const c=DB.clientes.find(x=>x.id==id);
-  try{await sbDelete('clientes',id);if(c)await audit('CLIENTE_REMOVIDO',`${c.nome} removido por ${currentUser}`);DB.clientes=DB.clientes.filter(c=>c.id!=id);}
-  catch(e){hideLoading();showToast('Erro ao remover.','err');return;}
-  hideLoading();populateCliSelect();renderCli();showToast('Cliente removido.');
+  // O banco NUNCA apagou cliente: não existe policy de DELETE em `clientes` (003) e as
+  // vendas apontam para ele por FK ON DELETE RESTRICT. Até 17/09/2026 esta tela chamava
+  // DELETE assim mesmo: a RLS engolia em silêncio (0 linhas, HTTP 204), o app tirava o
+  // cliente da tela e dizia "removido" — e ele voltava no próximo carregamento.
+  try{await sbPatch('clientes',id,{ativo:false});if(c)c.ativo=false;if(c)await audit('CLIENTE_INATIVADO',`${c.nome} inativado por ${currentUser}`);}
+  catch(e){hideLoading();showToast('Erro ao inativar — '+(e.message||e),'err');return;}
+  hideLoading();populateCliSelect();renderCli();showToast('Cliente inativado.');
+}
+async function reativarCli(id){
+  const c=DB.clientes.find(x=>x.id==id);if(!c)return;
+  showLoading('Reativando...');
+  try{await sbPatch('clientes',id,{ativo:true});c.ativo=true;await audit('CLIENTE_REATIVADO',`${c.nome} reativado por ${currentUser}`);}
+  catch(e){hideLoading();showToast('Erro ao reativar — '+(e.message||e),'err');return;}
+  hideLoading();populateCliSelect();renderCli();showToast('Cliente reativado.');
 }
 function verCli(id){
   const c=DB.clientes.find(x=>x.id==id);if(!c)return;
