@@ -1,5 +1,7 @@
 -- ============================================================
 -- VS PERFORMANCE - 002_IDEMPOTENCIA (op_id)
+-- ALINHADA AO BANCO em 17/09/2026: indices ux_<tabela>_op_id e checks chk_<tabela>_op_id
+-- (btrim(op_id) <> '') sao os nomes/expressoes que existem em producao. Mesma regra.
 -- ============================================================
 -- PROBLEMA QUE ISSO RESOLVE
 -- O app usa PWA e fila offline (enviarFila). Se o celular perde sinal
@@ -34,21 +36,20 @@ alter table saidas     add column if not exists op_id text;
 alter table reposicoes add column if not exists op_id text;
 alter table clientes   add column if not exists op_id text;
 
-comment on column vendas.op_id     is 'Chave de idempotencia gerada no app. NULL = registro anterior ao 002.';
-comment on column saidas.op_id     is 'Chave de idempotencia gerada no app. NULL = registro anterior ao 002.';
-comment on column reposicoes.op_id is 'Chave de idempotencia gerada no app. NULL = registro anterior ao 002.';
-comment on column clientes.op_id   is 'Chave de idempotencia gerada no app. NULL = registro anterior ao 002.';
+-- op_id: chave de idempotencia gerada no app. NULL = registro anterior ao 002.
+-- (O texto anterior gravava isso como COMMENT ON COLUMN; em producao os comentarios nao
+--  existem. Alinhado ao banco em 17/09/2026.)
 
 
 -- ---------- 2) INDICE UNICO PARCIAL ----------
 -- Parcial de proposito: nao indexa (nem trava) as linhas antigas com NULL.
-create unique index if not exists uq_vendas_op_id
+create unique index if not exists ux_vendas_op_id
   on vendas(op_id) where op_id is not null;
-create unique index if not exists uq_saidas_op_id
+create unique index if not exists ux_saidas_op_id
   on saidas(op_id) where op_id is not null;
-create unique index if not exists uq_reposicoes_op_id
+create unique index if not exists ux_reposicoes_op_id
   on reposicoes(op_id) where op_id is not null;
-create unique index if not exists uq_clientes_op_id
+create unique index if not exists ux_clientes_op_id
   on clientes(op_id) where op_id is not null;
 
 
@@ -63,13 +64,13 @@ declare
 begin
   foreach t in array array['vendas','saidas','reposicoes','clientes']
   loop
-    nome := 'ck_' || t || '_op_id_nao_vazio';
+    nome := 'chk_' || t || '_op_id';
     if not exists (select 1 from pg_constraint c
                      join pg_class cl on cl.oid = c.conrelid
                      join pg_namespace n on n.oid = cl.relnamespace
                     where n.nspname = 'public' and cl.relname = t and c.conname = nome) then
       execute format(
-        'alter table public.%I add constraint %I check (op_id is null or length(btrim(op_id)) > 0)',
+        'alter table public.%I add constraint %I check (op_id is null or btrim(op_id) <> '''')',
         t, nome);
       raise notice 'CRIADA  %', nome;
     else
@@ -87,7 +88,7 @@ select t.tabela,
                   and c.column_name = 'op_id')                        as coluna_op_id,
        exists (select 1 from pg_indexes i
                 where i.schemaname = 'public' and i.tablename = t.tabela
-                  and i.indexname = 'uq_' || t.tabela || '_op_id')    as indice_unico,
+                  and i.indexname = 'ux_' || t.tabela || '_op_id')    as indice_unico,
        exists (select 1 from pg_constraint c
                 where c.conrelid = ('public.' || t.tabela)::regclass
                   and c.conname = 'ck_' || t.tabela || '_op_id_nao_vazio') as check_nao_vazio,

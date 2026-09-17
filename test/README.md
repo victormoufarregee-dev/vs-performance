@@ -319,6 +319,29 @@ no histórico, não alteração do resto, offline. O lado do banco é SQL real:
 mutantes SM1..SM7) e rodado no SQL Editor numa transação que termina desfeita. Detalhes em
 `CONFERENCIA_CAIXA.md`.
 
+### `contrato.test.js` — o repositório descreve o banco de produção? (7 casos)
+
+Até 17/09/2026 a `004_rpc_operacoes.sql` descrevia RPCs com outra assinatura e seis
+auxiliares que nunca existiram; a 007 quase foi aplicada dependendo deles. Agora
+`test/sql/contrato.js` extrai das migrations o contrato de cada função (última definição
+vence, `drop` respeitado, exemplo comentado ignorado): assinatura, linguagem,
+`SECURITY DEFINER`, volatilidade, `search_path` e **md5 do corpo** — e compara com a foto de
+produção `test/sql/contrato_producao.json` (tirada no SQL Editor com
+`node test/sql/contrato.js --sql`). O `estatico.js` roda essa comparação na checagem
+`CONTRATO DO BANCO`, junto com "o app só chama RPC que existe" e "a view do extrato tem
+`security_invoker` e nada para anon".
+
+Os casos testam o **verificador**, com migrations inventadas em pasta temporária: migration
+posterior substitui, `drop` remove, assinatura trocada sai, cada tipo de divergência é
+acusado (corpo, só no arquivo, só em produção, definer, `search_path`, anon), trigger com
+EXECUTE de PUBLIC não é exposição, CRLF não muda o md5 — e, com as migrations reais, 0
+divergências e nenhuma chamada a `vsp_*` inexistente.
+
+Não prova que a foto é a de hoje: ela só muda quando alguém a atualiza. Para o banco,
+`node test/sql/reconstrucao.js` gera o SQL que recria as funções a partir das migrations e
+confere md5 e `xmin` dentro do banco, desfazendo tudo (17/17 em 17/09/2026). Detalhe e matriz
+de drift: `migrations/APLICADO.md`, seção "Drift 004 × produção".
+
 ### `estatico.test.js` — o texto do arquivo (26 casos)
 
 Não executa nada (fora o parse). Pega justamente o que o harness **não** pega:
@@ -337,10 +360,12 @@ Não executa nada (fora o parse). Pega justamente o que o harness **não** pega:
   **não** escreve mais `p.custoCaixa`/`p.custoFrasco`/`p.caixas` (a conta saiu do
   cliente) e chama `vsp_registrar_compra` com `op_id`; e a regra do arredondamento
   ("cada um arredondado uma vez, os dois a partir do valor não arredondado") é conferida
-  no **SQL**: `migrations/004_rpc_operacoes.sql` tem de conter
-  `v_cc := round(v_cf_raw * v_fpc, 2)` e **não** `round(v_cf * v_fpc)`, que era o bug
-  dos 582,52. É o único caso da suíte que lê um arquivo que não é o `index.html`, e
-  existe porque, se essa linha desaparecer da migration, **nenhum** teste do harness
+  no **SQL vigente** (004 + 006, alinhadas ao banco por md5 em 17/09/2026): nos três
+  caminhos que recalculam custo (compra, cancelamento, estorno) tem de existir
+  `custo_frasco = round(v_raw, 2)` e `custo_caixa = round(v_raw * v_fpc, 2)`, e **não** a
+  caixa derivada do frasco já arredondado, que era o bug dos 582,52. Até 17/09 este caso
+  lia o **rascunho** da 004 (`v_cf`/`v_cc`), que nunca rodou — ou seja, protegia um texto
+  que não era o do banco. Se a regra desaparecer da migration, **nenhum** teste do harness
   veria — o harness não roda SQL;
 * a guarda `podeRecalcular` no estorno (que hoje só monta o **aviso** ao usuário: quem
   decide o custo é o banco), o botão de estorno ligado na interface e a compra sem saída
@@ -389,8 +414,10 @@ Se o trecho a mutar não casar exatamente o número de vezes esperado, o script 
 "morto": ele diz `NAO APLICADO` e manda reescrever a mutação. Um mutante que nunca chegou
 a ser aplicado não prova nada.
 
-Resultado de 17/09/2026 — **15 mutantes, 15 mortos, 0 sobreviventes** (controle: 228 casos
-verdes). Os oito primeiros são do razão (16/09); os sete `OF-M*` são da fila offline:
+Resultado de 17/09/2026 (fechamento do drift) — **28 mutantes, 28 mortos, 0 sobreviventes**
+(controle: 257 casos verdes). Os oito primeiros são do razão (16/09), os sete `OF-M*` da fila
+offline, os oito `CX-M*` da Conferência de Caixa (lado do app; o lado do banco, `SM1..SM7`,
+roda em SQL real — `migrations/APLICADO.md`, seção 007) e os cinco `DR-M*` do drift do banco:
 
 | mutante | arquivo mutado | o que muda | quem matou | resultado |
 |---|---|---|---|---|
@@ -409,6 +436,19 @@ verdes). Os oito primeiros são do razão (16/09); os sete `OF-M*` são da fila 
 | **OF-M5** | `index.html` | a troca para `enviando` não confere se a intenção está livre: duas abas enviam a mesma | `fila.test.js` › "duas abas processando ao mesmo tempo enviam cada intenção UMA vez" | **morto** |
 | **OF-M6** | `index.html` | 401/403 viram transitório: retry infinito | `fila.test.js` › "401/403 (sessão sem permissão): falhou, sem retry infinito" | **morto** |
 | **OF-M7** | `index.html` | o painel chama a intenção pendente de "Sincronizado" | `fila.test.js` › "pendente: barra e painel dizem guardado, nunca confirmado/sincronizado" | **morto** |
+| **CX-M1** | `index.html` | prévia com diferença = esperado − real | `conferencia.test.js` › "prévia: diferença = real − esperado…" | **morto** |
+| **CX-M2** | `index.html` | app manda `p_saldo_esperado` | `conferencia.test.js` › "só saldo real, observação e op_id…" | **morto** |
+| **CX-M3** | `index.html` | cada confirmar gera op_id novo | `conferencia.test.js` › "retry usa o MESMO op_id…" | **morto** |
+| **CX-M4** | `index.html` | app manda `p_usuario` | `conferencia.test.js` › "só saldo real, observação e op_id…" | **morto** |
+| **CX-M5** | `index.html` | histórico mostra o caixa de hoje no lugar da foto | `conferencia.test.js` › "o histórico mostra a FOTO…" | **morto** |
+| **CX-M6** | `index.html` | centavos truncados (`Math.trunc`) | `conferencia.test.js` › "prévia…" (19,99 · 0,29 · 4,35) | **morto** |
+| **CX-M7** | `index.html` | registrar lança saída de ajuste | `conferencia.test.js` › "registrar não altera…" | **morto** |
+| **CX-M8** | `index.html` | sem rede, usa o caixa da cópia local | `conferencia.test.js` › "rede cai ao consultar o esperado…" | **morto** |
+| **DR-M1** | `migrations/004_rpc_operacoes.sql` | guarda de estoque da venda vira `< 0` | `contrato.test.js` › "as migrations reais batem com a foto de producao" **e** `estatico.js` › `CONTRATO DO BANCO DIVERGE` | **morto** |
+| **DR-M2** | `migrations/006_ledger_victor.sql` | view do extrato sem `security_invoker` e com SELECT para anon | `estatico.js` › `CONTRATO DO BANCO DIVERGE` | **morto** |
+| **DR-M3** | `migrations/005_ator_da_sessao.sql` | `vsp_ator()` deixa de olhar o uid | `contrato.test.js` › "as migrations reais…" **e** `estatico.js` | **morto** |
+| **DR-M4** | `index.html` | app chama `vsp_caixa_atual`, que não existe | `estatico.js` › `CONTRATO DO BANCO DIVERGE` (+ casos da conferência) | **morto** |
+| **DR-M5** | `migrations/007_conferencia_caixa.sql` | 007 volta a chamar `vsp_audit` (fictício) | `contrato.test.js` › "nenhuma migration… chama auxiliar que nao existe" **e** `estatico.js` | **morto** |
 
 Dois detalhes que valem registro:
 
@@ -585,7 +625,8 @@ olho humano, de teste em SQL e de teste no app publicado**:
   estiver errada no banco, a suíte continua verde. Essas contas são testadas **em SQL,
   contra o banco real, em transação revertida** — o registro está em
   `migrations/APLICADO.md`, e quem mexer em `migrations/004_rpc_operacoes.sql` tem de
-  refazer aqueles testes lá, não aqui.
+  refazer aqueles testes lá, não aqui. O que a suíte **prova** sobre o SQL desde 17/09/2026
+  é que o texto das migrations é o de produção (`CONTRATO DO BANCO`, abaixo).
 * **Rede e Supabase.** Nenhuma requisição real acontece. Não se prova que a tabela
   existe, que a coluna tem o nome certo, que o `PATCH` de fato gravou, que a função
   `vsp_*` existe com essa assinatura, nem que o `jsonb` enviado é aceito (um campo com

@@ -218,16 +218,16 @@ describe('As correcoes de 15/09/2026 continuam no codigo', () => {
     // A regra ("cada um arredondado uma vez, os dois a partir do valor nao arredondado")
     // mudou de arquivo junto com a conta. Se ela desaparecer da migration, o bug volta
     // — e nenhum teste do harness veria, porque o harness nao roda SQL.
-    const sql = H.lerMigration('004_rpc_operacoes.sql');
-    assertInclui(sql, 'v_cf := round(v_cf_raw, 2);',
-      'o custo do frasco sai do valor nao arredondado');
-    assertInclui(sql, 'v_cc := round(v_cf_raw * v_fpc, 2);',
-      'e o custo da caixa TAMBEM sai do valor nao arredondado');
-    assertNaoInclui(sql, 'round(v_cf * v_fpc',
-      'esta e a forma bugada: multiplicar o frasco ja arredondado');
-    assertNaoInclui(sql, 'v_cc := v_cf * v_fpc', 'e esta e a mesma coisa com outro nome');
-    assertTrue(sql.split('v_cc := round(v_cf_raw * v_fpc, 2);').length - 1 >= 2,
-      'a regra vale nos dois caminhos que recalculam custo (compra e estorno)');
+    // Ate 17/09/2026 este caso lia o RASCUNHO da 004 (v_cf/v_cc), que nunca rodou. Agora le
+    // o texto VIGENTE, alinhado ao banco por md5: venda/cancelamento/estorno na 004, compra
+    // na 006. Nas RPCs reais o valor nao arredondado se chama v_raw.
+    const sql = H.lerMigration('004_rpc_operacoes.sql') + H.lerMigration('006_ledger_victor.sql');
+    const frasco = sql.match(/custo_frasco = round\(v_raw, ?2\)/g) || [];
+    const caixa = sql.match(/custo_caixa = round\(v_raw \* v_fpc, 2\)/g) || [];
+    assertTrue(frasco.length >= 3, 'o custo do frasco sai do valor nao arredondado (compra, cancelamento, estorno)');
+    assertTrue(caixa.length >= 3, 'e o custo da caixa TAMBEM sai do valor nao arredondado, nos tres caminhos');
+    assertFalse(/round\(\s*custo_frasco\s*\*|custo_caixa\s*=\s*custo_frasco\s*\*|round\(v_cf \* v_fpc/.test(sql),
+      'forma bugada: derivar a caixa do frasco ja arredondado');
   });
 
   it('estornarCompra mantem a guarda podeRecalcular', () => {

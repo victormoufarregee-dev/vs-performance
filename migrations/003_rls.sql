@@ -85,6 +85,8 @@ comment on table usuarios_autorizados is
 -- stable: o Postgres chama uma vez por comando em vez de uma vez por linha.
 -- search_path fixo: ninguem consegue apontar "usuarios_autorizados" para
 -- outro schema e forjar autorizacao.
+-- Corpo ALINHADO AO BANCO em 17/09/2026 (conferido por md5). Mesma regra do texto
+-- anterior: "and ativo" com ativo nulo nao e verdadeiro, igual ao coalesce(ativo,false).
 create or replace function public.vsp_autorizado()
 returns boolean
 language sql
@@ -92,10 +94,7 @@ stable
 security definer
 set search_path = public, pg_temp
 as $fn$
-  select exists (
-    select 1 from public.usuarios_autorizados u
-     where u.uid = auth.uid() and coalesce(u.ativo, false)
-  );
+  select exists (select 1 from public.usuarios_autorizados where uid = auth.uid() and ativo);
 $fn$;
 
 revoke all on function public.vsp_autorizado() from public;
@@ -109,6 +108,10 @@ drop policy if exists vsp_sel_usuarios_autorizados on usuarios_autorizados;
 create policy vsp_sel_usuarios_autorizados on usuarios_autorizados
   for select to authenticated using (public.vsp_autorizado());
 revoke insert, update, delete on usuarios_autorizados from authenticated, anon;
+-- NOTA 17/09/2026: em producao este revoke NAO esta em vigor — anon e authenticated tem
+-- os grants padrao do Supabase na tabela. A protecao efetiva e a RLS: so existe policy de
+-- SELECT, entao nenhum INSERT/UPDATE/DELETE passa pela API (provado pela API publica).
+-- Registrado como drift aberto em migrations/APLICADO.md; nao alterado nesta rodada.
 
 
 -- ============================================================

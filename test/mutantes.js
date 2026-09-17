@@ -160,7 +160,9 @@ const MUTANTES = [
       'corrigida em 15/09/2026 volta, agora no razao financeiro',
     arquivo: 'migrations/006_ledger_victor.sql',
     trocas: [
-      ['public.vsp_ator()', "coalesce(nullif(btrim(p_usuario),''),'sistema')", 2],
+      // 3 usos desde 17/09/2026: estorno de origem, reembolso e a compra vigente (que passou a
+      // morar na 006 quando o arquivo foi alinhado ao banco)
+      ['public.vsp_ator()', "coalesce(nullif(btrim(p_usuario),''),'sistema')", 3],
       [
         'vsp_ledger_estornar_origem(p_origem_tipo text, p_origem_id bigint, p_motivo text)',
         'vsp_ledger_estornar_origem(p_origem_tipo text, p_origem_id bigint, p_motivo text, p_usuario text default null)',
@@ -334,6 +336,53 @@ const MUTANTES = [
       1,
     ]],
   },
+
+  // ---------------------------------------------------------------------------
+  // DRIFT DO BANCO (17/09/2026). O repositório voltando a descrever um banco que não é o
+  // de produção — exatamente o que a 004 fazia e o que quase derrubou a 007.
+  // ---------------------------------------------------------------------------
+  {
+    id: 'DR-M1',
+    titulo: 'RPC de venda no arquivo diverge da produção',
+    oQueMuda: 'a guarda de estoque da 004 vira "< 0": o arquivo passa a descrever uma venda que vende sem estoque',
+    arquivo: 'migrations/004_rpc_operacoes.sql',
+    trocas: [['if v_afetou = 0 then', 'if v_afetou < 0 then', 1]],
+  },
+  {
+    id: 'DR-M2',
+    titulo: 'view do extrato volta a vazar',
+    oQueMuda: 'a 006 recria v_ledger_victor sem security_invoker e com SELECT para anon',
+    arquivo: 'migrations/006_ledger_victor.sql',
+    trocas: [
+      ['create or replace view public.v_ledger_victor with (security_invoker = true) as', 'create or replace view public.v_ledger_victor as', 1],
+      ['revoke all on public.v_ledger_victor from public, anon;', 'grant select on public.v_ledger_victor to anon;', 1],
+    ],
+  },
+  {
+    id: 'DR-M3',
+    titulo: 'ator da sessão deixa de olhar o uid',
+    oQueMuda: 'a 005 resolve o nome pelo primeiro autorizado ativo, não pela sessão',
+    arquivo: 'migrations/005_ator_da_sessao.sql',
+    trocas: [[
+      '(select nome from public.usuarios_autorizados where uid = auth.uid() and ativo),',
+      '(select nome from public.usuarios_autorizados where ativo limit 1),',
+      1,
+    ]],
+  },
+  {
+    id: 'DR-M4',
+    titulo: 'app chama RPC que não existe no banco',
+    oQueMuda: 'o modal da conferência chama vsp_caixa_atual, que nenhuma migration cria',
+    arquivo: 'index.html',
+    trocas: [["sbRpc('vsp_caixa_esperado',{})", "sbRpc('vsp_caixa_atual',{})", 1]],
+  },
+  {
+    id: 'DR-M5',
+    titulo: 'migration volta a depender de auxiliar fictício',
+    oQueMuda: 'a 007 volta a chamar vsp_audit, que só existia no rascunho da 004',
+    arquivo: 'migrations/007_conferencia_caixa.sql',
+    trocas: [["perform public.vsp_cc_audit('CONFERENCIA_CAIXA',", "perform public.vsp_audit('CONFERENCIA_CAIXA',", 1]],
+  },
 ];
 
 // =============================================================================
@@ -418,7 +467,7 @@ function casosQueFalharam(saida) {
   while ((m = re.exec(trecho)) !== null) {
     casos.push({ suite: m[1], caso: m[2], arquivo: mapa[m[1]] || '?' });
   }
-  const peso = (x) => (x.arquivo === 'ledger.test.js' || x.arquivo === 'fila.test.js' || x.arquivo === 'conferencia.test.js' ? 0
+  const peso = (x) => (x.arquivo === 'ledger.test.js' || x.arquivo === 'fila.test.js' || x.arquivo === 'conferencia.test.js' || x.arquivo === 'contrato.test.js' ? 0
     : x.arquivo === 'estatico.test.js' ? 1 : 2);
   return casos.map((x, k) => ({ x, k }))
     .sort((a, b) => (peso(a.x) - peso(b.x)) || (a.k - b.k))
@@ -437,6 +486,7 @@ const SINAIS_ESTATICO = [
   /^IDENTIDADE DO RAZAO VOLTOU.*$/m,
   /^FILA OFFLINE QUEBRADA.*$/m,
   /^CONFERENCIA DE CAIXA QUEBRADA.*$/m,
+  /^CONTRATO DO BANCO DIVERGE.*$/m,
 ];
 
 function sinaisEstatico(saida) {

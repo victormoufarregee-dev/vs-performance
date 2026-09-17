@@ -20,6 +20,17 @@ Banco em produção com dado real: **65 vendas, 21 clientes, 23 saídas,
 | 2 | `002_idempotencia.sql` | não (só schema) | não |
 | 3 | `003_rls.sql` | não | **sim — leia antes** |
 | 4 | `004_rpc_operacoes.sql` | não (só cria funções) | não |
+| 5 | `005_ator_da_sessao.sql` | não (só cria função) | não |
+| 6 | `006_ledger_victor.sql` | **sim — cria o razão e roda o backfill** | não |
+| 7 | `007_conferencia_caixa.sql` | não (tabela nova, vazia) | não |
+
+> **Desde 17/09/2026 estes arquivos representam o banco de PRODUÇÃO** (mesma convenção do
+> commit `095bcca`, que alinhou a 006). As funções foram copiadas de `pg_proc.prosrc` e
+> conferidas por md5. `node test/estatico.js` reprova se o texto divergir da foto de produção
+> (`test/sql/contrato_producao.json`). Ao mudar uma função no banco, mude o arquivo **e**
+> atualize a foto (`node test/sql/contrato.js --sql`). O rascunho antigo da 004, que nunca
+> rodou, está em `historico/` — **não aplicar**. Detalhes: `APLICADO.md`, seção
+> "Drift 004 × produção".
 
 **Pré-requisito:** o `ATUALIZACAO_v4.sql` tem de já estar aplicado. Estas
 migrations partem do schema dele (`produtos.preco_padrao`,

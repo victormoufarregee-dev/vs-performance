@@ -136,4 +136,28 @@ console.log(confOk
   ? 'CONFERENCIA DE CAIXA: ok, esperado e autor no banco, foto imutavel, 007 so le o negocio'
   : 'CONFERENCIA DE CAIXA QUEBRADA: ' + confProblemas.join('; '));
 
-process.exit(erros || !confOk || !filaOk || !identidadeOk || ausentes.length || achados.length || semId.length || voltou.length || faltam.length || legadoVoltou.length || semLedger.length ? 1 : 0);
+// 11) contrato do banco: as migrations descrevem o banco de producao?
+//     Ate 17/09/2026 a 004 descrevia RPCs com outra assinatura e auxiliares que nunca
+//     existiram, e a 007 quase foi aplicada dependendo deles. contrato.js compara o que as
+//     migrations criam (ultima definicao vence) com a foto de producao gravada em
+//     test/sql/contrato_producao.json: corpo (md5), assinatura, linguagem, definer,
+//     volatilidade, search_path e EXECUTE de anon.
+const contratoLib = require('./sql/contrato.js');
+const fotoContrato = JSON.parse(fs.readFileSync(path.join(__dirname, 'sql', 'contrato_producao.json'), 'utf8'));
+const contrato = contratoLib.extrair(MIGRACOES);
+const contratoProblemas = contratoLib.comparar(contrato, fotoContrato.funcoes);
+// o app so pode chamar RPC que existe no contrato
+const rpcsDoApp = [...new Set([...h.matchAll(/sbRpc\('(\w+)'/g)].map((m) => m[1]))];
+const nomesContrato = new Set(Object.keys(contrato).map((k) => k.split('(')[0]));
+rpcsDoApp.filter((r) => !nomesContrato.has(r)).forEach((r) => contratoProblemas.push('o app chama ' + r + ', que nao existe nas migrations'));
+// a view do extrato tem de respeitar a RLS (vazou para anon ate 17/09/2026)
+const sql006 = fs.readFileSync(path.join(MIGRACOES, '006_ledger_victor.sql'), 'utf8').replace(/\r\n/g, '\n');
+if (!/create or replace view public\.v_ledger_victor with \(security_invoker = true\)/.test(sql006) ||
+    !/revoke all on public\.v_ledger_victor from public, anon;/.test(sql006))
+  contratoProblemas.push('v_ledger_victor sem security_invoker ou com SELECT para anon');
+const contratoOk = !contratoProblemas.length;
+console.log(contratoOk
+  ? 'CONTRATO DO BANCO: ok, ' + Object.keys(contrato).length + ' funcoes das migrations = producao (' + (fotoContrato.tirada_em || '?') + '); ' + rpcsDoApp.length + ' RPCs do app existem; view do extrato protegida'
+  : 'CONTRATO DO BANCO DIVERGE: ' + contratoProblemas.join('; '));
+
+process.exit(erros || !contratoOk || !confOk || !filaOk || !identidadeOk || ausentes.length || achados.length || semId.length || voltou.length || faltam.length || legadoVoltou.length || semLedger.length ? 1 : 0);
