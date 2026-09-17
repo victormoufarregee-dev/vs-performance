@@ -51,7 +51,12 @@ begin
 
   -- O2 sem estoque: recusa e não mexe
   begin
-    perform public.vsp_registrar_venda(jsonb_set(jsonb_set(v_venda, '{id}', to_jsonb(id_venda + 100)), '{qtd}', '99999'), 'aud-venda-grande');
+    -- os derivados saem do payload: com a 011 o banco recalcula, e mandar o bruto de 1
+    -- caixa junto com qtd=99999 seria recusado por incoerencia antes de chegar no estoque
+    perform public.vsp_registrar_venda(
+      jsonb_set(jsonb_set(v_venda, '{id}', to_jsonb(id_venda + 100)), '{qtd}', '99999')
+        - 'val_final' - 'bruto' - 'taxa_val' - 'liq' - 'custo' - 'lucro_liq' - 'margem',
+      'aud-venda-grande');
     f := f || text 'O2 vendeu sem estoque';
   exception when others then
     if sqlerrm ilike '%estoque insuficiente%' then ok := ok + 1; else f := f || ('O2 erro inesperado: ' || sqlerrm); end if;

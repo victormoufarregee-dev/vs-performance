@@ -1,6 +1,6 @@
 -- ============================================================================
 -- Matriz de GRANTS de tabela — rodado DENTRO do banco real, desfeito no fim.
---   esperado (com a 010 aplicada):  RESULTADO_GRANTS: 17 ok, 0 falha(s)
+--   esperado (com a 010 aplicada):  RESULTADO_GRANTS: 19 ok, 0 falha(s)
 --
 -- Prova, sem olhar para a RLS, que o privilégio bruto já é o mínimo:
 --   G1  anon não tem NENHUM privilégio em NENHUMA tabela/view do schema public
@@ -23,10 +23,10 @@ declare
     ['estoque',              'SELECT'],
     ['ledger_victor',        'SELECT'],
     ['produtos',             'INSERT,SELECT,UPDATE'],
-    ['reposicoes',           'SELECT,UPDATE'],
+    ['reposicoes',           'SELECT'],
     ['saidas',               'DELETE,INSERT,SELECT'],
     ['usuarios_autorizados', 'SELECT'],
-    ['vendas',               'SELECT,UPDATE'],
+    ['vendas',               'SELECT'],
     ['v_ledger_victor',      'SELECT']
   ];
   i int;
@@ -60,6 +60,17 @@ begin
      and (has_function_privilege('anon', p.oid, 'execute')
           or has_function_privilege('authenticated', p.oid, 'execute'));
   if n = 0 then ok := ok + 1; else f := f || text 'G4 vsp_cc_protege ainda executavel por anon/authenticated'; end if;
+
+  -- G6 — o UPDATE que sobrou é por COLUNA (011): em vendas só o vencimento do fiado,
+  --      em reposicoes só lote/validade/nota. O resto passa pela RPC.
+  select coalesce(string_agg(distinct column_name, ',' order by column_name), '(nenhuma)')
+    into got from information_schema.column_privileges
+   where table_schema = 'public' and table_name = 'vendas' and grantee = 'authenticated' and privilege_type = 'UPDATE';
+  if got = 'vence_em' then ok := ok + 1; else f := f || ('G6 vendas: UPDATE em ' || got || ' esperado vence_em'); end if;
+  select coalesce(string_agg(distinct column_name, ',' order by column_name), '(nenhuma)')
+    into got from information_schema.column_privileges
+   where table_schema = 'public' and table_name = 'reposicoes' and grantee = 'authenticated' and privilege_type = 'UPDATE';
+  if got = 'lote,nota_lote,validade' then ok := ok + 1; else f := f || ('G6b reposicoes: UPDATE em ' || got); end if;
 
   -- G5 — default privileges: tabela nova não nasce aberta para anon
   execute 'create table public.zz_vsp_teste_grants (id int)';

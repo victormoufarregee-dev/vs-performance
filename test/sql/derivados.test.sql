@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Derivados financeiros calculados pelo banco (011) — rodado DENTRO do banco
 -- real, desfeito no fim.
---   esperado (com a 011 aplicada):  RESULTADO_DERIVADOS: 29 ok, 0 falha(s)
+--   esperado (com a 011 aplicada):  RESULTADO_DERIVADOS: 30 ok, 0 falha(s)
 --
 -- O que este arquivo prova, com a sessão do Victor (allowlist) simulada como o
 -- PostgREST faz:
