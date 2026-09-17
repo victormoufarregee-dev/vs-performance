@@ -253,6 +253,87 @@ const MUTANTES = [
     arquivo: 'index.html',
     trocas: [["pendente:'Guardado neste aparelho'", "pendente:'Sincronizado'", 1]],
   },
+
+  // ---------------------------------------------------------------------------
+  // CONFERÊNCIA DE CAIXA (17/09/2026) — lado do app. Os mesmos oito riscos do lado do
+  // banco (SM1..SM7) são provados em SQL real: test/sql/montar.js + migrations/APLICADO.md.
+  // ---------------------------------------------------------------------------
+  {
+    id: 'CX-M1',
+    titulo: 'diferença vira esperado − real',
+    oQueMuda: 'a prévia mostra "sobra" quando falta dinheiro e vice-versa',
+    arquivo: 'index.html',
+    trocas: [['  const dif=real-CONF.esperado,e=confEstado(dif);', '  const dif=CONF.esperado-real,e=confEstado(dif);', 1]],
+  },
+  {
+    id: 'CX-M2',
+    titulo: 'app manda o saldo esperado',
+    oQueMuda: 'o app passa o esperado da prévia ao banco — quem decide a foto deixaria de ser o servidor',
+    arquivo: 'index.html',
+    trocas: [[
+      "res=await sbRpc('vsp_registrar_conferencia_caixa',{p_saldo_real:centavosTexto(real),p_observacao:obs,p_op_id:CONF.op});",
+      "res=await sbRpc('vsp_registrar_conferencia_caixa',{p_saldo_real:centavosTexto(real),p_saldo_esperado:centavosTexto(CONF.esperado),p_observacao:obs,p_op_id:CONF.op});",
+      1,
+    ]],
+  },
+  {
+    id: 'CX-M3',
+    titulo: 'retry gera op_id novo (segunda conferência)',
+    oQueMuda: 'cada clique em Confirmar inventa um op_id: resposta perdida + nova tentativa = duas conferências',
+    arquivo: 'index.html',
+    trocas: [["  CONF.salvando=true;showLoading('Registrando conferência...');", "  CONF.salvando=true;CONF.op=novoOpId();showLoading('Registrando conferência...');", 1]],
+  },
+  {
+    id: 'CX-M4',
+    titulo: 'app manda o nome de quem conferiu',
+    oQueMuda: 'o autor volta a viajar no payload — a porta da impersonação corrigida em 15/09',
+    arquivo: 'index.html',
+    trocas: [[
+      "res=await sbRpc('vsp_registrar_conferencia_caixa',{p_saldo_real:centavosTexto(real),p_observacao:obs,p_op_id:CONF.op});",
+      "res=await sbRpc('vsp_registrar_conferencia_caixa',{p_saldo_real:centavosTexto(real),p_observacao:obs,p_op_id:CONF.op,p_usuario:currentUser});",
+      1,
+    ]],
+  },
+  {
+    id: 'CX-M5',
+    titulo: 'histórico recalcula com o caixa de hoje',
+    oQueMuda: 'a coluna Esperado do histórico mostra o caixa atual em vez da foto gravada',
+    arquivo: 'index.html',
+    trocas: [['<td style="text-align:right;white-space:nowrap">${brlCentavos(c.saldoEsperado)}</td>', '<td style="text-align:right;white-space:nowrap">${brlCentavos(esp)}</td>', 1]],
+  },
+  {
+    id: 'CX-M6',
+    titulo: 'centavos truncados',
+    oQueMuda: 'Math.trunc no lugar de Math.round: 100,01 vira 100,00 (100.01*100 = 10000.999…)',
+    arquivo: 'index.html',
+    trocas: [[
+      'function centavosDe(v){const n=Number(v);return isFinite(n)?Math.round(n*100):0;}',
+      'function centavosDe(v){const n=Number(v);return isFinite(n)?Math.trunc(n*100):0;}',
+      1,
+    ]],
+  },
+  {
+    id: 'CX-M7',
+    titulo: 'registrar "ajusta" o caixa',
+    oQueMuda: 'depois de registrar, o app lança uma saída de ajuste para o caixa esperado bater com o real',
+    arquivo: 'index.html',
+    trocas: [[
+      '  if(i>=0)DB.conferencias[i]=c;else DB.conferencias.unshift(c);',
+      "  if(i>=0)DB.conferencias[i]=c;else DB.conferencias.unshift(c);if(c.diferenca)DB.saidas.push({id:Date.now(),tipo:'outros',socio:null,desc:'Ajuste de conferência',data:today(),val:-c.diferenca/100,pgto:'pix'});",
+      1,
+    ]],
+  },
+  {
+    id: 'CX-M8',
+    titulo: 'conferência offline usa o caixa da cópia local',
+    oQueMuda: 'sem rede, o modal assume o caixa calculado com os dados do aparelho em vez de recusar',
+    arquivo: 'index.html',
+    trocas: [[
+      "    closeModal('confModal');",
+      "    if(e.semRede){CONF.esperado=caixaEsperadoPartes().centavos;document.getElementById('confEsperado').textContent=brlCentavos(CONF.esperado);return;}closeModal('confModal');",
+      1,
+    ]],
+  },
 ];
 
 // =============================================================================
@@ -337,7 +418,7 @@ function casosQueFalharam(saida) {
   while ((m = re.exec(trecho)) !== null) {
     casos.push({ suite: m[1], caso: m[2], arquivo: mapa[m[1]] || '?' });
   }
-  const peso = (x) => (x.arquivo === 'ledger.test.js' || x.arquivo === 'fila.test.js' ? 0
+  const peso = (x) => (x.arquivo === 'ledger.test.js' || x.arquivo === 'fila.test.js' || x.arquivo === 'conferencia.test.js' ? 0
     : x.arquivo === 'estatico.test.js' ? 1 : 2);
   return casos.map((x, k) => ({ x, k }))
     .sort((a, b) => (peso(a.x) - peso(b.x)) || (a.k - b.k))
@@ -355,6 +436,7 @@ const SINAIS_ESTATICO = [
   /^CONSUMIDOR NAO MIGRADO.*$/m,
   /^IDENTIDADE DO RAZAO VOLTOU.*$/m,
   /^FILA OFFLINE QUEBRADA.*$/m,
+  /^CONFERENCIA DE CAIXA QUEBRADA.*$/m,
 ];
 
 function sinaisEstatico(saida) {

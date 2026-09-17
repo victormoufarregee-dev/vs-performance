@@ -307,6 +307,18 @@ para a fila. Detalhe e evidência do navegador real em `OFFLINE_FILA.md`.
 Não prova: o IndexedDB de cada navegador (Safari/iOS fica para o smoke do Victor,
 `SMOKE_OFFLINE.md`) nem a RPC por dentro.
 
+### `conferencia.test.js` — Conferência de Caixa, lado do app (22 casos)
+
+A conta do caixa esperado com um fixture em que **cada fórmula errada provável** (fiado em
+aberto, venda cancelada, bruto no lugar do líquido, compra de estoque, dívida do Victor,
+estoque, sem reembolso) dá outro número — calculadas de verdade sobre o mesmo DB, não
+somando constantes. Centavos inteiros, leitura pt-BR, prévia (inclusive 19,99 e 0,29, que
+perdem o centavo em ponto flutuante), parâmetros enviados à RPC, retry, clique duplo, foto
+no histórico, não alteração do resto, offline. O lado do banco é SQL real:
+`test/sql/conferencia_caixa.test.sql`, montado por `node test/sql/montar.js` (controle e
+mutantes SM1..SM7) e rodado no SQL Editor numa transação que termina desfeita. Detalhes em
+`CONFERENCIA_CAIXA.md`.
+
 ### `estatico.test.js` — o texto do arquivo (26 casos)
 
 Não executa nada (fora o parse). Pega justamente o que o harness **não** pega:

@@ -103,4 +103,33 @@ console.log(filaOk
   : 'FILA OFFLINE QUEBRADA:' + (filaVoltou.length ? ' voltou ' + filaVoltou.join(', ') : '') +
     (filaFalta.length ? ' falta ' + filaFalta.join(', ') : ''));
 
-process.exit(erros || !filaOk || !identidadeOk || ausentes.length || achados.length || semId.length || voltou.length || faltam.length || legadoVoltou.length || semLedger.length ? 1 : 0);
+// 10) conferencia de caixa: verificacao, nunca correcao.
+//     O banco calcula e fotografa o esperado; o cliente so manda o que contou.
+const sql007 = fs.readFileSync(path.join(MIGRACOES, '007_conferencia_caixa.sql'), 'utf8').replace(/\r\n/g, '\n');
+const corpoSql007 = sql007.replace(/^\s*--.*$/gm, '');   // comentarios nao contam
+const confProblemas = [];
+if (!corpoSql007.includes('vsp_registrar_conferencia_caixa(p_saldo_real numeric, p_observacao text, p_op_id text)'))
+  confProblemas.push('assinatura da RPC aceita mais que saldo real/observacao/op_id');
+if (/p_saldo_esperado|p_diferenca|p_usuario|p_created_by/.test(corpoSql007))
+  confProblemas.push('o cliente pode ditar esperado/diferenca/autor');
+if (!corpoSql007.includes('check (diferenca = saldo_real - saldo_esperado)'))
+  confProblemas.push('convencao diferenca = real - esperado');
+if (!/create unique index if not exists ux_cc_op_id/.test(corpoSql007))
+  confProblemas.push('op_id unico');
+if (!/create trigger trg_cc_protege before update or delete on public\.conferencias_caixa/.test(corpoSql007))
+  confProblemas.push('trigger de imutabilidade');
+if (/insert\s+into\s+public\.(saidas|vendas|ledger_victor|reposicoes|produtos)|update\s+public\.(saidas|vendas|ledger_victor|reposicoes|produtos)|delete\s+from\s+public\./i.test(corpoSql007))
+  confProblemas.push('a 007 grava em tabela de negocio (a conferencia so pode ler)');
+if ((corpoSql007.match(/public\.vsp_ator\(\)/g) || []).length < 2)
+  confProblemas.push('autor fora de vsp_ator()');
+if (!corpoSql007.includes('revoke all on function public.vsp_caixa_esperado_calc() from public, anon, authenticated'))
+  confProblemas.push('conta interna exposta');
+const chamadaConf = (h.match(/sbRpc\('vsp_registrar_conferencia_caixa',\{[^}]*\}/) || [''])[0];
+if (!chamadaConf) confProblemas.push('app nao chama vsp_registrar_conferencia_caixa');
+else if (/p_saldo_esperado|p_diferenca|p_usuario|created_by/.test(chamadaConf)) confProblemas.push('app manda esperado/diferenca/autor');
+const confOk = !confProblemas.length;
+console.log(confOk
+  ? 'CONFERENCIA DE CAIXA: ok, esperado e autor no banco, foto imutavel, 007 so le o negocio'
+  : 'CONFERENCIA DE CAIXA QUEBRADA: ' + confProblemas.join('; '));
+
+process.exit(erros || !confOk || !filaOk || !identidadeOk || ausentes.length || achados.length || semId.length || voltou.length || faltam.length || legadoVoltou.length || semLedger.length ? 1 : 0);
