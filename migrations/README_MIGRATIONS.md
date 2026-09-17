@@ -23,6 +23,7 @@ Banco em produção com dado real: **65 vendas, 21 clientes, 23 saídas,
 | 5 | `005_ator_da_sessao.sql` | não (só cria função) | não |
 | 6 | `006_ledger_victor.sql` | **sim — cria o razão e roda o backfill** | não |
 | 7 | `007_conferencia_caixa.sql` | não (tabela nova, vazia) | não |
+| 8 | `008_integridade_razao_caixa.sql` | não (triggers e funções; não reescreve linha) | não — editar valor/data de saída `fornecedor` passa a ser recusado (exclua e lance de novo) |
 
 > **Desde 17/09/2026 estes arquivos representam o banco de PRODUÇÃO** (mesma convenção do
 > commit `095bcca`, que alinhou a 006). As funções foram copiadas de `pg_proc.prosrc` e

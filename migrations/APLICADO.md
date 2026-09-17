@@ -394,3 +394,35 @@ depois de tudo: **35 ok, 0 falhas**.
 * **Regra:** mudou função no banco → mude o arquivo **e** atualize a foto
   (`node test/sql/contrato.js --sql` no SQL Editor → `test/sql/contrato_producao.json`).
   Antes de aplicar SQL novo, ensaie no banco numa transação que termina em exceção.
+
+---
+
+## 008 — Integridade do razão e do caixa esperado ✅ (17/09/2026)
+
+Auditoria de encerramento. Achados reproduzidos **no banco real, em transação desfeita**
+(`test/sql/operacoes_razao.test.sql`), antes de qualquer correção:
+
+| # | achado | classe | correção |
+|---|---|---|---|
+| A | pagamento ao fornecedor lançado **pelo Financeiro** (saída `fornecedor`) não creditava o razão — só a RPC `vsp_reembolsar_victor` creditava | P0 latente (dinheiro errado; nenhum dado afetado: 15 saídas fornecedor = 15 créditos) | trigger `trg_lv_saida_inserida` credita toda saída fornecedor; a RPC deixou de inserir (sem duplicar) |
+| B | excluir uma saída fornecedor deixava o crédito no razão | P0 latente | trigger `trg_lv_saida_excluida` estorna pela origem |
+| C | estornar compra (excluir reposição) deixava o débito no razão (+500 residual no ensaio) | P0 latente | trigger `trg_lv_reposicao_excluida` estorna pela origem |
+| — | editar valor/data/tipo de saída fornecedor dessincronizava o razão | P0 latente | `trg_lv_saida_editada` bloqueia (42501): exclua e lance de novo |
+| D | `vsp_saldo_victor()` e `vsp_ledger_estornar_origem()` executáveis por conta autenticada **fora** da allowlist | P1 (não há conta assim: 2 usuários, ambos autorizados; cadastro desligado) | saldo exige `vsp_autorizado()`; estornar_origem sem EXECUTE para authenticated |
+| F | lançamento com **data futura** entrava no "caixa esperado agora" (banco e app) | P1 (nenhuma linha futura real) | `v.data <= hoje` e `s.data <= hoje` no fuso de São Paulo, no banco e no app |
+
+Placar do teste de operações: **antes 23 ok / 11 falhas** → ensaio da 008 (desfeito)
+**34 / 0** → aplicada **34 / 0**. Na mesma rodada: Conferência 35/0, extrato (`view_ledger`,
+agora por propriedade) 9/0, segurança RLS (`seguranca_rls`) 102/0.
+
+**Incidente na aplicação:** o editor do SQL Editor estava com fim de linha CRLF e gravou `\r`
+no `prosrc` — md5 diferente do arquivo, lógica idêntica (`md5(replace(prosrc,E'\r',''))` =
+arquivo). A 008 é idempotente: reaplicada com LF, nenhuma função `vsp_*` tem `\r`, foto
+retirada de novo (`contrato_producao.json`, 22 funções, 17/09 13:59).
+
+**Canônicos antes = depois** (Conta Victor 5.758,30 · estoque 4.660,00 · CMV 23.539,30 ·
+caixa −3,49 · vendas 65 · clientes 21 · saídas 23 · reposições 5 · razão 21 · conferências 0 ·
+md5 das tabelas idênticos). Auditoria 264 = 263 + 1 LOGIN legítimo do Victor (13:44), não
+causado pela 008.
+
+Rollback: comentado no fim do arquivo `008_integridade_razao_caixa.sql`.

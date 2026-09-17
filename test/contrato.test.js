@@ -94,9 +94,11 @@ describe('Contrato do banco — o verificador', () => {
   it('as migrations reais batem com a foto de producao', () => {
     const fotoReal = JSON.parse(fs.readFileSync(path.join(__dirname, 'sql', 'contrato_producao.json'), 'utf8'));
     const dir = process.env.VSP_MIGRATIONS || path.join(__dirname, '..', 'migrations');
-    const p = C.comparar(C.extrair(dir), fotoReal.funcoes);
+    const contrato = C.extrair(dir);
+    const p = C.comparar(contrato, fotoReal.funcoes);
     assertEqual(p.join(' | '), '', 'sem drift');
-    assertEqual(Object.keys(fotoReal.funcoes).length, 17, '17 funcoes em producao em 17/09/2026');
+    // propriedade, nao contagem historica: o mesmo conjunto de funcoes dos dois lados
+    assertEqual(Object.keys(fotoReal.funcoes).sort().join(','), Object.keys(contrato).sort().join(','), 'mesmas funcoes');
   });
 
   it('nenhuma migration do contrato chama auxiliar que nao existe em producao', () => {

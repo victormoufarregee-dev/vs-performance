@@ -46,14 +46,18 @@ construir.
    agosto e pago em setembro aparece no caixa de **agosto**. O saldo acumulado não é afetado.
    O próprio bloco "Hoje" já mostra "Fiado quitado" pela data de quitação — dentro da mesma
    tela as duas datas convivem.
-2. **Parcelado entra inteiro no dia da venda.** Se a maquininha repassa em parcelas, o banco
+2. **[RESOLVIDO 17/09 — não é erro]** Victor confirmou: cartão, inclusive parcelado, cai **inteiro
+   em 1–2 dias**. Continua entrando no dia da venda; a conferência mostra à parte quanto foi
+   vendido no cartão hoje e ontem ("pode ainda não ter caído"). Texto original: **Parcelado entra inteiro no dia da venda.** Se a maquininha repassa em parcelas, o banco
    só vai ter parte do valor — uma conferência logo depois de uma venda parcelada deve mostrar
    **falta**, e isso não é erro de lançamento.
 3. **Sem saldo inicial.** A conta começa do zero no primeiro lançamento. Em 15/09 o Victor
    disse que o banco estava em R$ 0,00 enquanto o sistema dizia −R$ 3,49; a primeira
    conferência deve mostrar essa diferença (+R$ 3,49 se nada mais mudou). A conferência
    **não** cria saldo inicial para "fazer bater".
-4. **Datas futuras contam.** Venda ou saída com data à frente já entra no esperado de hoje
+4. **[CORRIGIDO 17/09, migration 008 + app]** O caixa esperado agora vai só **até hoje** (fuso
+   de São Paulo); lançamento com data futura aparece como aviso e entra quando o dia chega.
+   Texto original: **Datas futuras contam.** Venda ou saída com data à frente já entra no esperado de hoje
    (o Financeiro nunca filtrou por data). Mantido igual para não criar uma segunda regra.
 5. `numBR("1.000")` devolve **1**, não mil (usado nos formulários antigos). A conferência
    **não** usa `numBR`: tem leitor próprio (`dinheiroParaCentavos`) que entende `1.000` como

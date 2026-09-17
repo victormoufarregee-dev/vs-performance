@@ -299,3 +299,23 @@ describe('Helpers de produto e estoque', () => {
     assertEqual(e.diasAte(e.addDias(e.today(), 5)), 5, 'daqui 5 dias');
   });
 });
+
+// =============================================================================
+// numBR é quem lê valor da venda, desconto, saída, custo de compra e preço. Em 17/09/2026
+// (auditoria de encerramento) "1.250" virava R$ 1,25: ponto com grupos de 3 dígitos é
+// milhar no jeito brasileiro de escrever.
+describe('numBR() — dinheiro digitado do jeito brasileiro', () => {
+  const casos = [
+    ['1.250', 1250], ['1.165', 1165], ['1.000.000', 1000000], ['R$ 1.250,00', 1250],
+    ['1.234,56', 1234.56], ['51.069,49', 51069.49], ['150,00', 150], ['582,50', 582.5],
+    ['0,99', 0.99], ['12.50', 12.5], ['1.5', 1.5], ['470.5', 470.5], ['300', 300], ['', 0], ['abc', 0],
+  ];
+  it('ponto com grupos de 3 dígitos é milhar; vírgula ou ponto com 1–2 dígitos é centavo', () => {
+    casos.forEach(([txt, esperado]) => assertClose(escopo().numBR(txt), esperado, JSON.stringify(txt)));
+  });
+  it('o campo de saída lê "1.250" como mil duzentos e cinquenta', () => {
+    const e = escopo();
+    h.preencher({ fVal: '1.250' });
+    assertClose(e.valNum('fVal'), 1250, 'valNum');
+  });
+});

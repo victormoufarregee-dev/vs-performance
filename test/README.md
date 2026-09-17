@@ -17,8 +17,9 @@ node test/mutantes.js             # provas de mutante: estraga o código e exige
 node test/mutantes.js M3 M5       # só esses mutantes
 ```
 
-São **186 casos** hoje: 33 no financeiro, **56 no razão da Conta do Victor**, 36 nas
-operações, 34 nos utilitários e 26 estáticos. Sai com código **1** se algum caso falhar
+São **266 casos** hoje (17/09/2026, auditoria de encerramento): 33 no financeiro, **61 no
+razão da Conta do Victor**, 36 nas operações, 36 nos utilitários, 42 na fila offline, 24 na
+Conferência de Caixa, 7 no contrato do banco e 27 estáticos. Sai com código **1** se algum caso falhar
 (ou se um arquivo de teste não carregar), e **0** quando está tudo verde. Hoje não há
 nenhum pendente: as duas divergências abertas em 16/09 foram corrigidas no mesmo
 dia. Testado no Windows 11 com Git Bash e Node 24.
@@ -395,6 +396,19 @@ a troca para `enviando` ou `filaGuardar(` sumirem. Tanto ele quanto o
 `estatico.test.js` honram `VSP_INDEX` e `VSP_MIGRATIONS`, que é como o `test/mutantes.js`
 roda essas mesmas travas contra uma cópia mutada sem tocar nos arquivos reais.
 
+## Testes em SQL real (SQL Editor, transação sempre desfeita)
+
+Cada arquivo é um bloco `DO` que termina em `raise exception 'RESULTADO_...'` — nada fica
+gravado. Sessões simuladas com `set local role` + `request.jwt.claims` (anon, intruso fora
+da allowlist, Victor, Stefany). Placar de 17/09/2026, depois da 008:
+
+| arquivo | o que prova | placar |
+|---|---|---|
+| `test/sql/operacoes_razao.test.sql` | venda, compra, cancelamento, estorno, reembolso, pagamento ao fornecedor pelo Financeiro (crédito e estorno por trigger), edição bloqueada, data futura fora do caixa, Stefany, intruso, anon | **34 ok** (antes da 008: 23 ok / 11 falhas) |
+| `test/sql/conferencia_caixa.test.sql` | Conferência de Caixa (007) | **35 ok** |
+| `test/sql/view_ledger.test.sql` | extrato `v_ledger_victor`: security_invoker, anon/intruso sem leitura, Victor e Stefany veem **todas** as linhas e o saldo corrido final = `vsp_saldo_victor()` — por propriedade, sem contagem fixa | **9 ok** |
+| `test/sql/seguranca_rls.test.sql` | 12 tabelas × anon/intruso × SELECT/INSERT/UPDATE/DELETE, `usuarios_autorizados` inalterável pela API, nenhuma `vsp_*` executável por anon | **102 ok** |
+
 ## Provas de mutante (`node test/mutantes.js`)
 
 Uma suíte verde não prova nada por si só: ela pode estar verde porque **não olha para o
@@ -414,8 +428,13 @@ Se o trecho a mutar não casar exatamente o número de vezes esperado, o script 
 "morto": ele diz `NAO APLICADO` e manda reescrever a mutação. Um mutante que nunca chegou
 a ser aplicado não prova nada.
 
-Resultado de 17/09/2026 (fechamento do drift) — **28 mutantes, 28 mortos, 0 sobreviventes**
-(controle: 257 casos verdes). Os oito primeiros são do razão (16/09), os sete `OF-M*` da fila
+Resultado de 17/09/2026 (auditoria de encerramento) — **35 mutantes, 35 mortos, 0
+sobreviventes** (controle: 266 casos verdes). Os sete novos: `RZ-M1` (trigger de estorno da
+compra na 008 trocado para UPDATE), `RZ-M2` (app soma venda futura no caixa), `RZ-M3` (saldo do
+Victor legível fora da allowlist), `RZ-M4` (banco soma venda futura no caixa esperado),
+`RZ-M5`/`RZ-M6` (pagar fornecedor / estornar compra sem reler o extrato — Conta do Victor com
+saldo velho) e `NB-M1` ("1.250" volta a virar R$ 1,25). Resultado anterior, do fechamento do
+drift: 28 de 28 (controle 257). Os oito primeiros são do razão (16/09), os sete `OF-M*` da fila
 offline, os oito `CX-M*` da Conferência de Caixa (lado do app; o lado do banco, `SM1..SM7`,
 roda em SQL real — `migrations/APLICADO.md`, seção 007) e os cinco `DR-M*` do drift do banco:
 

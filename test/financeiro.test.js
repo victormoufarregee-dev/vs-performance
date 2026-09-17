@@ -148,6 +148,9 @@ describe('REGRESSAO da baseline de 15/09/2026 — estes numeros NAO podem mudar'
 
   it('resultado de caixa = -R$ 3,49 (recebido 51.066,00 - saidas 51.069,49)', () => {
     const h = novo(F.producao());
+    // desde a 008 o caixa conta ate HOJE; a fixture tem vendas datadas ate 30/09/2026, entao o
+    // total historico e lido num "hoje" depois da ultima data (a conta nao depende do relogio)
+    h.escrever('today', () => '2026-09-30');
     const r = financeiroRenderizado(h);
     assertClose(valorRotulado(r.met, 'Entradas recebidas'), 51066.00, 'recebido total');
     assertClose(valorRotulado(r.met, 'Saídas (financeiro)'), 51069.49, 'saidas totais');

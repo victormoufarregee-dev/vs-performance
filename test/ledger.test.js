@@ -952,3 +952,88 @@ describe('Defensivo — cache antigo, sem DB.ledger', () => {
     assertEqual(h2.escopo.saldoVictor(), 0, 'e saldo zero em vez de numero inventado');
   });
 });
+
+// =============================================================================
+// Desde a 008 o BANCO mexe no razão sozinho (triggers): pagar fornecedor pelo Financeiro
+// credita, excluir esse pagamento estorna, estornar compra estorna o débito. O app não
+// recebe o movimento na resposta — ele tem de reler o extrato, senão a Conta do Victor
+// fica mostrando o saldo antigo até alguém clicar em "Atualizar".
+describe('Razão escrito pelo banco (008) — o app relê o extrato depois', () => {
+
+  const linhaBanco = (m) => ({
+    id: m.id, data: m.data, tipo: m.tipo, direcao: m.direcao, valor: m.valor, descricao: m.descricao,
+    origem_tipo: m.origemTipo, origem_id: m.origemId, estorna_id: m.estornaId || null,
+    estornado_em: m.estornadoEm || null, created_by: m.criadoPor, saldo_corrido: m.saldoCorrido,
+  });
+  // servidor falso: grava as chamadas; o extrato devolvido é o de produção + `extra`
+  function banco(h, extra) {
+    const chamadas = [];
+    const base = F.producao().ledger.map(linhaBanco);
+    h.ctx.fetch = async (url, o) => {
+      const c = { url: String(url), metodo: ((o && o.method) || 'GET').toUpperCase(), corpo: o && o.body ? String(o.body) : '' };
+      chamadas.push(c);
+      const corpo = c.metodo === 'GET' && /\/v_ledger_victor\?/.test(c.url) ? base.concat(extra || [])
+        : c.metodo === 'DELETE' ? null : (c.corpo ? [JSON.parse(c.corpo)] : []);
+      const texto = corpo == null ? '' : JSON.stringify(corpo);
+      return { ok: true, status: 200, headers: { get: () => 'application/json' },
+        async json() { return texto ? JSON.parse(texto) : null; }, async text() { return texto; } };
+    };
+    h.escrever('authToken', 'token-de-teste');
+    chamadas.extrato = () => chamadas.filter((c) => c.metodo === 'GET' && /\/v_ledger_victor\?/.test(c.url));
+    return chamadas;
+  }
+  const credito = (id, valor, tipo, origem, origemId) => ({
+    id, data: '2026-09-17', tipo, direcao: 'credito', valor, descricao: 'via trigger',
+    origem_tipo: origem, origem_id: origemId, estorna_id: null, estornado_em: null, created_by: 'Victor', saldo_corrido: 0,
+  });
+
+  it('pagar fornecedor pelo Financeiro: relê o extrato e o saldo cai na hora', async () => {
+    const h = comRazao();
+    const antes = h.escopo.saldoVictor();
+    const rede = banco(h, [credito(9001, 300, 'reembolso', 'saida', 1)]);
+    h.preencher({ fTipo: 'fornecedor', fForn: 'Victor', fDesc: 'Reembolso', fData: '2026-09-17', fVal: '300', fPgto: 'pix' });
+    await h.escopo.regSaida();
+    assertEqual(rede.extrato().length, 1, 'releu o extrato uma vez');
+    assertEqual(F.cent(h.escopo.saldoVictor()), F.cent(antes - 300), 'saldo novo, sem clicar em Atualizar');
+  });
+
+  it('saída que não é fornecedor não relê o extrato (o banco não mexeu no razão)', async () => {
+    const h = comRazao();
+    const rede = banco(h);
+    h.preencher({ fTipo: 'despesa', fSocio: 'Victor', fDesc: 'Frete', fData: '2026-09-17', fVal: '50', fPgto: 'pix' });
+    await h.escopo.regSaida();
+    assertEqual(rede.extrato().length, 0, 'sem leitura extra');
+  });
+
+  it('excluir pagamento ao fornecedor: relê o extrato com o estorno', async () => {
+    const h = comRazao();
+    const s = h.escopo.DB.saidas.find((x) => x.tipo === 'fornecedor');
+    const antes = h.escopo.saldoVictor();
+    const rede = banco(h, [Object.assign(credito(9002, s.val, 'estorno', 'saida', s.id), { direcao: 'debito' })]);
+    h.confirmar(true);
+    await h.escopo.delSaida(s.id);
+    assertEqual(rede.extrato().length, 1, 'releu o extrato');
+    assertEqual(F.cent(h.escopo.saldoVictor()), F.cent(antes + s.val), 'a dívida volta a subir na hora');
+  });
+
+  it('estornar compra: relê o extrato com o estorno do débito', async () => {
+    const h = novo(F.dbEstorno('limpo'));
+    h.espiarRpc({});
+    const rede = banco(h, [credito(9003, 1165, 'estorno', 'reposicao', 3000)]);
+    h.confirmar(true);
+    await h.escopo.estornarCompra(3000);
+    assertEqual(rede.extrato().length, 1, 'releu o extrato');
+    assertTrue(h.escopo.DB.ledger.some((m) => m.id === 9003), 'o estorno está no razão do app');
+  });
+
+  it('se a releitura falhar, a operação continua valendo e o app avisa para atualizar', async () => {
+    const h = comRazao();
+    const rede = banco(h);
+    const real = h.ctx.fetch;
+    h.ctx.fetch = async (url, o) => (/\/v_ledger_victor\?/.test(String(url)) ? Promise.reject(new TypeError('Failed to fetch')) : real(url, o));
+    h.preencher({ fTipo: 'fornecedor', fForn: 'Victor', fDesc: 'Reembolso', fData: '2026-09-17', fVal: '300', fPgto: 'pix' });
+    await h.escopo.regSaida();
+    assertTrue(h.ui.toasts().some((t) => /Lançamento registrado/.test(t)), 'o lançamento foi salvo');
+    assertTrue(h.ui.toasts().some((t) => /Atualizar/.test(t)), 'pede para atualizar a Conta do Victor');
+  });
+});

@@ -383,6 +383,77 @@ const MUTANTES = [
     arquivo: 'migrations/007_conferencia_caixa.sql',
     trocas: [["perform public.vsp_cc_audit('CONFERENCIA_CAIXA',", "perform public.vsp_audit('CONFERENCIA_CAIXA',", 1]],
   },
+
+  // ---------------------------------------------------------------------------
+  // RAZÃO E CAIXA (008, auditoria de encerramento de 17/09/2026). O lado do banco foi
+  // provado em SQL real: test/sql/operacoes_razao.test.sql deu 23 ok / 11 falhas ANTES da 008
+  // e 34/0 depois — é o controle negativo de cada correção abaixo.
+  // ---------------------------------------------------------------------------
+  {
+    id: 'RZ-M1',
+    titulo: 'estornar compra volta a deixar o débito no razão',
+    oQueMuda: 'a 008 deixa de criar o trigger de reposição excluída',
+    arquivo: 'migrations/008_integridade_razao_caixa.sql',
+    trocas: [['create trigger trg_lv_reposicao_excluida after delete on public.reposicoes', 'create trigger trg_lv_reposicao_excluida after update on public.reposicoes', 1]],
+  },
+  {
+    id: 'RZ-M2',
+    titulo: 'app volta a somar venda futura no caixa',
+    oQueMuda: 'caixaEsperadoPartes ignora a data da venda',
+    arquivo: 'index.html',
+    trocas: [[
+      '  const recebido=DB.vendas.filter(v=>valida(v)&&(!v.data||v.data<=lim)).reduce((a,v)=>a+(+v.liq||0),0);',
+      '  const recebido=DB.vendas.filter(v=>valida(v)).reduce((a,v)=>a+(+v.liq||0),0);',
+      1,
+    ]],
+  },
+  {
+    id: 'RZ-M5',
+    titulo: 'pagar fornecedor volta a deixar a Conta do Victor com saldo velho',
+    oQueMuda: 'regSaida para de reler o extrato depois do trigger da 008',
+    arquivo: 'index.html',
+    trocas: [[
+      "  const razaoOk=tipo!=='fornecedor'||await recarregarRazao();",
+      '  const razaoOk=true;',
+      1,
+    ]],
+  },
+  {
+    id: 'RZ-M6',
+    titulo: 'estornar compra volta a deixar a Conta do Victor com saldo velho',
+    oQueMuda: 'estornarCompra para de reler o extrato',
+    arquivo: 'index.html',
+    trocas: [[
+      '  const razaoOk=await recarregarRazao();',
+      '  const razaoOk=true;',
+      1,
+    ]],
+  },
+  {
+    id: 'NB-M1',
+    titulo: '"1.250" volta a virar R$ 1,25',
+    oQueMuda: 'numBR perde a leitura de milhar com ponto',
+    arquivo: 'index.html',
+    trocas: [[
+      '  }else if(/^-?\\d{1,3}(\\.\\d{3})+$/.test(s)){',
+      '  }else if(false){',
+      1,
+    ]],
+  },
+  {
+    id: 'RZ-M3',
+    titulo: 'saldo do Victor volta a ser legível fora da allowlist',
+    oQueMuda: 'a 008 tira a checagem de autorização de vsp_saldo_victor',
+    arquivo: 'migrations/008_integridade_razao_caixa.sql',
+    trocas: [['  if public.vsp_uid_sessao() is not null and not public.vsp_autorizado() then', '  if false then', 1]],
+  },
+  {
+    id: 'RZ-M4',
+    titulo: 'banco volta a somar venda futura no caixa esperado',
+    oQueMuda: 'vsp_caixa_esperado_calc perde o filtro de data das vendas',
+    arquivo: 'migrations/008_integridade_razao_caixa.sql',
+    trocas: [["                   and v.data <= (now() at time zone 'America/Sao_Paulo')::date), 0)", '                   ), 0)', 1]],
+  },
 ];
 
 // =============================================================================
@@ -487,6 +558,7 @@ const SINAIS_ESTATICO = [
   /^FILA OFFLINE QUEBRADA.*$/m,
   /^CONFERENCIA DE CAIXA QUEBRADA.*$/m,
   /^CONTRATO DO BANCO DIVERGE.*$/m,
+  /^RAZAO E CAIXA QUEBRADO.*$/m,
 ];
 
 function sinaisEstatico(saida) {

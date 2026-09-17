@@ -128,9 +128,41 @@ describe('Conferência de caixa — de onde vem o caixa esperado', () => {
 
   it('com os dados de 15/09: esperado negativo, −R$ 3,49, aceito e explicado', () => {
     const h = novo(F.producao());
+    h.escrever('today', () => '2026-09-30');   // depois da ultima data da fixture
     assertEqual(h.escopo.caixaEsperadoPartes().centavos, -349, 'centavos');
     h.escopo.renderFin();
     assertInclui(texto(h.ui.html('confTopo')), '−R$ 3,49', 'sinal de menos e vírgula');
+  });
+
+  it('lançamento com data futura não entra no caixa de hoje (e entra quando o dia chega)', () => {
+    const h = novo(dbDivergente());
+    h.escrever('today', () => '2026-09-17');
+    const antes = h.escopo.caixaEsperadoPartes().centavos;
+    h.escopo.DB.saidas.push(F.saidaSimples({ id: 50, val: 500, data: '2026-09-27' }));
+    h.escopo.DB.vendas.push(F.vendaSimples({ id: 51, pgto: 'pix', bruto: 300, liq: 300, data: '2026-09-20' }));
+    const cx = h.escopo.caixaEsperadoPartes();
+    assertEqual(cx.centavos, antes, 'saida de R$ 500 daqui a 10 dias e venda futura nao mudam o caixa de hoje');
+    assertEqual(cx.futuros, 2, 'dois lancamentos futuros contados');
+    h.escopo.renderFin();
+    assertMatch(texto(h.ui.html('confTopo')), /2 lançamento\(s\) com data futura ainda não entram/, 'o card avisa');
+    h.escrever('today', () => '2026-09-27');
+    assertEqual(h.escopo.caixaEsperadoPartes().centavos, antes - 50000 + 30000, 'no dia 27 os dois ja aconteceram');
+  });
+
+  it('cartão de hoje e ontem aparece à parte e não muda a conta', async () => {
+    const h = novo(dbDivergente());
+    h.escrever('today', () => '2026-09-17');
+    const antes = h.escopo.caixaEsperadoPartes().centavos;
+    h.escopo.DB.vendas.push(F.vendaSimples({ id: 60, pgto: 'credito', bruto: 200, liq: 190.5, data: '2026-09-17' }));
+    h.escopo.DB.vendas.push(F.vendaSimples({ id: 61, pgto: 'parcelado', bruto: 300, liq: 280, data: '2026-09-16' }));
+    h.escopo.DB.vendas.push(F.vendaSimples({ id: 62, pgto: 'credito', bruto: 999, liq: 999, data: '2026-09-15' }));   // anteontem: ja caiu
+    h.escopo.DB.vendas.push(F.vendaSimples({ id: 63, pgto: 'pix', bruto: 50, liq: 50, data: '2026-09-17' }));          // pix: nao e cartao
+    const cx = h.escopo.caixaEsperadoPartes();
+    assertEqual(cx.centavos, antes + 19050 + 28000 + 99900 + 5000, 'tudo entra na conta (cartao cai em 1-2 dias)');
+    assertEqual(cx.cartaoRecente, 47050, 'so credito/parcelado de hoje e ontem');
+    h.espiarRpc(() => 1000);
+    await h.escopo.abrirConferenciaCaixa();
+    assertMatch(h.ui.elementos.get('confCartao').textContent, /Inclui R\$ 470,50 de vendas no cartão de hoje e ontem/, 'modal explica');
   });
 
   it('não depende de estoque, compra ou razão: mexer neles não muda o esperado', () => {

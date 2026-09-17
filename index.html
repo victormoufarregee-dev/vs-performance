@@ -702,7 +702,7 @@ input,select,textarea{font-size:16px;padding:11px 12px}
 <div id="simModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'simModal')"><div class="modal" style="max-width:640px"><h3><i class="ti ti-calculator"></i> Simulador de pre&ccedil;o</h3><div class="fr3"><div class="fg"><label>Produto</label><select id="simProd" onchange="calcSimulador()"></select></div><div class="fg"><label>Tipo</label><select id="simTipo" onchange="calcSimulador()"></select></div><div class="fg"><label>Margem desejada (%)</label><input type="number" id="simMargem" value="50" min="1" max="95" oninput="calcSimulador()"/></div></div><div id="simBody"></div><div style="display:flex;justify-content:flex-end;margin-top:1rem"><button class="btn" onclick="closeModal('simModal')">Fechar</button></div></div></div>
 <div id="ajudaModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'ajudaModal')"><div class="modal" style="max-width:480px"><h3 id="ajudaTit"></h3><div id="ajudaBody" class="ajuda-body"></div><div style="display:flex;justify-content:flex-end;margin-top:1rem"><button class="btn" onclick="closeModal('ajudaModal')">Entendi</button></div></div></div>
 <div id="loteModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'loteModal')"><div class="modal"><h3>Lote e validade da compra</h3><input type="hidden" id="loteRepId"/><p id="loteInfo" style="font-size:12px;color:var(--sub);margin-bottom:1rem"></p><div class="fr"><div class="fg"><label>Lote</label><input type="text" id="loteCod" placeholder="Ex: L2407A"/></div><div class="fg"><label>Validade</label><input type="date" id="loteVal"/></div></div><div class="fg" style="margin-bottom:1rem"><label>Anota&ccedil;&otilde;es (campo livre)</label><textarea id="loteNota" placeholder="Fabricante, transporte, nota fiscal, quem entregou, aspecto do produto..." style="resize:vertical;height:90px;font-size:12px"></textarea></div><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn-s" onclick="closeModal('loteModal')">Cancelar</button><button class="btn" onclick="salvarLote()"><i class="ti ti-check"></i> Salvar</button></div></div></div>
-<div id="confModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'confModal')"><div class="modal" style="max-width:440px"><h3><i class="ti ti-scale"></i> Conferir caixa</h3><div style="background:var(--secondary-bg);border-radius:8px;padding:10px 12px;margin-bottom:1rem"><p style="font-size:12px;color:var(--sub);margin:0">O VS Performance espera:</p><p id="confEsperado" style="font-size:20px;font-weight:600;margin:2px 0 0"></p><p style="font-size:10px;color:var(--sub);margin:4px 0 0">Todo o dinheiro da empresa somado: bancos e espécie.</p></div><div class="fg" style="margin-bottom:.75rem"><label>Quanto existe realmente agora? *</label><input type="text" inputmode="decimal" id="confReal" placeholder="Ex.: 1.250,00" oninput="previaConferenciaCaixa()"/></div><div class="fg" style="margin-bottom:.75rem"><label>Observação (opcional)</label><textarea id="confObs" placeholder="Ex.: somei Nubank + Inter + dinheiro na gaveta" style="resize:none;height:60px;font-size:12px"></textarea></div><div id="confPrevia" style="margin-bottom:1rem"></div><div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button class="btn-s" onclick="closeModal('confModal')">Cancelar</button><button class="btn" onclick="confirmarConferenciaCaixa()"><i class="ti ti-check"></i> Confirmar conferência</button></div></div></div>
+<div id="confModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'confModal')"><div class="modal" style="max-width:440px"><h3><i class="ti ti-scale"></i> Conferir caixa</h3><div style="background:var(--secondary-bg);border-radius:8px;padding:10px 12px;margin-bottom:1rem"><p style="font-size:12px;color:var(--sub);margin:0">O VS Performance espera:</p><p id="confEsperado" style="font-size:20px;font-weight:600;margin:2px 0 0"></p><p style="font-size:10px;color:var(--sub);margin:4px 0 0">Todo o dinheiro da empresa somado: bancos e espécie.</p><p id="confCartao" style="font-size:10px;color:var(--am);margin:4px 0 0"></p></div><div class="fg" style="margin-bottom:.75rem"><label>Quanto existe realmente agora? *</label><input type="text" inputmode="decimal" id="confReal" placeholder="Ex.: 1.250,00" oninput="previaConferenciaCaixa()"/></div><div class="fg" style="margin-bottom:.75rem"><label>Observação (opcional)</label><textarea id="confObs" placeholder="Ex.: somei Nubank + Inter + dinheiro na gaveta" style="resize:none;height:60px;font-size:12px"></textarea></div><div id="confPrevia" style="margin-bottom:1rem"></div><div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button class="btn-s" onclick="closeModal('confModal')">Cancelar</button><button class="btn" onclick="confirmarConferenciaCaixa()"><i class="ti ti-check"></i> Confirmar conferência</button></div></div></div>
 <div id="filaModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'filaModal')"><div class="modal" style="max-width:520px"><h3><i class="ti ti-cloud-upload"></i> Operações guardadas neste aparelho</h3><p style="font-size:12px;color:var(--sub);margin-bottom:10px">Só contam como registradas quando aparecem como <strong>Confirmado pelo servidor</strong>. Enquanto isso ficam guardadas aqui, mesmo se você fechar o app.</p><div id="filaBody"></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:1rem;flex-wrap:wrap"><button class="btn-s" onclick="closeModal('filaModal')">Fechar</button><button class="btn" onclick="enviarAgoraFila()"><i class="ti ti-send"></i> Enviar agora</button></div></div></div>
 <div id="toast" class="toast"></div>
 
@@ -1318,6 +1318,8 @@ function numBR(v){
     s=(vir>pon)?s.replace(/\./g,'').replace(',','.'):s.replace(/,/g,'');
   }else if(vir>-1){
     s=(s.length-vir-1===3&&s.split(',').length===2&&/^\d{1,3},\d{3}$/.test(s))?s.replace(',',''):s.replace(',','.');
+  }else if(/^-?\d{1,3}(\.\d{3})+$/.test(s)){ // so ponto, em grupos de 3: milhar ("1.250" = mil duzentos e cinquenta)
+    s=s.replace(/\./g,'');
   }
   const n=parseFloat(s);return isFinite(n)?n:0;
 }
@@ -1357,6 +1359,14 @@ function mapLedger(m){return{
 };}
 // quem abrir com um cache salvo antes desta versao nao tem DB.ledger
 function ledgerMovs(){return Array.isArray(DB.ledger)?DB.ledger:[];}
+// Desde a 008 o banco escreve no razao por trigger (pagamento ao fornecedor, exclusao dele,
+// estorno de compra) e a resposta nao traz o movimento: rele o extrato, senao a Conta do
+// Victor fica com o saldo antigo ate alguem tocar em Atualizar.
+const RAZAO_MSG_RELER=' A Conta do Victor só mostra o saldo novo depois de tocar em Atualizar.';
+async function recarregarRazao(){
+  try{const l=await sbGet('v_ledger_victor','order=data.asc,id.asc');if(!Array.isArray(l))return false;DB.ledger=l.map(mapLedger);return true;}
+  catch(e){return false;}
+}
 function saldoVictor(){return ledgerMovs().reduce((a,m)=>a+(m.direcao==='debito'?m.valor:-m.valor),0);}
 const LEDGER_ROTULO={saldo_inicial:'Saldo inicial',compra_financiada:'Compra paga por voc\u00ea',reembolso:'Reembolso recebido',ajuste_financeiro:'Ajuste financeiro',estorno:'Estorno'};
 function ledgerRotulo(t){return LEDGER_ROTULO[t]||t;}
@@ -2260,9 +2270,10 @@ async function regSaida(){
   const row={id,tipo,socio,descricao:desc,data,val,pgto};
   try{await sbPost('saidas',row);DB.saidas.push({id,tipo,socio,desc,data,val,pgto});populateFornecedores();await audit('FINANCEIRO',`${tipo}${tipo==='fornecedor'?' ('+socio+')':''} — ${desc} — ${R(val)}`);}
   catch(e){hideLoading();showToast('Erro ao salvar — '+(e.message||e),'err');return;}
+  const razaoOk=tipo!=='fornecedor'||await recarregarRazao();
   hideLoading();
   document.getElementById('fDesc').value='';document.getElementById('fVal').value='';document.getElementById('fData').value=today();
-  renderFin();renderDash();showToast('Lançamento registrado!');
+  renderFin();renderDash();showToast('Lançamento registrado!'+(razaoOk?'':RAZAO_MSG_RELER),razaoOk?undefined:'warn');
 }
 function setFTab(tab,btn){finTabAtual=tab;document.querySelectorAll('[id^="ftab-"]').forEach(b=>{b.style.background='';b.style.color='';b.style.borderColor='';});btn.style.background='var(--g)';btn.style.color='#fff';btn.style.borderColor='var(--g)';renderFin();}
 // ============================================================
@@ -2365,12 +2376,21 @@ const CONF_MSG_OFFLINE='A conferência de caixa precisa de conexão para compara
 const CONF={op:null,esperado:null,salvando:false};
 
 // Caixa esperado — a ÚNICA conta de caixa acumulado do app (o Financeiro usa esta também).
-// Mesma regra do banco (vsp_caixa_esperado_calc): recebido das vendas não canceladas que
-// não são fiado em aberto, menos todas as saídas, desde o início. Soma e arredonda uma vez.
-function caixaEsperadoPartes(){
-  const recebido=DB.vendas.filter(v=>!v.cancelada&&(v.pgto!=='fiado'||v.quitado)).reduce((a,v)=>a+(+v.liq||0),0);
-  const saidas=DB.saidas.reduce((a,s)=>a+(+s.val||0),0);
-  return {recebido,saidas,centavos:Math.round((recebido-saidas)*100)};
+// Mesma regra do banco (vsp_caixa_esperado_calc, migration 008): recebido das vendas não
+// canceladas que não são fiado em aberto, menos as saídas, desde o início ATÉ HOJE — venda ou
+// saída com data futura ainda não aconteceu e não entra. Soma e arredonda uma vez.
+// Crédito e parcelado contam no dia da venda: o Victor confirmou em 17/09/2026 que a
+// maquininha repassa tudo em 1–2 dias. O que foi vendido no cartão hoje e ontem sai em
+// `cartaoRecente`, só para explicar uma falta na conferência — não muda a conta.
+function caixaEsperadoPartes(ate){
+  const lim=ate||today(),ontem=addDias(lim,-1);
+  const valida=v=>!v.cancelada&&(v.pgto!=='fiado'||v.quitado);
+  const recebido=DB.vendas.filter(v=>valida(v)&&(!v.data||v.data<=lim)).reduce((a,v)=>a+(+v.liq||0),0);
+  const saidas=DB.saidas.filter(s=>!s.data||s.data<=lim).reduce((a,s)=>a+(+s.val||0),0);
+  const futuros=DB.vendas.filter(v=>valida(v)&&v.data>lim).length+DB.saidas.filter(s=>s.data>lim).length;
+  const cartaoRecente=Math.round(DB.vendas.filter(v=>valida(v)&&(v.pgto==='credito'||v.pgto==='parcelado')&&v.data>=ontem&&v.data<=lim)
+    .reduce((a,v)=>a+(+v.liq||0),0)*100);
+  return {recebido,saidas,centavos:Math.round((recebido-saidas)*100),futuros,cartaoRecente};
 }
 function centavosDe(v){const n=Number(v);return isFinite(n)?Math.round(n*100):0;}
 function centavosTexto(c){const neg=c<0,a=Math.abs(c);return (neg?'-':'')+Math.floor(a/100)+'.'+String(a%100).padStart(2,'0');}
@@ -2428,7 +2448,7 @@ function confFiltradas(){
 }
 function renderConferenciaCaixa(){
   const topo=document.getElementById('confTopo');if(!topo)return;
-  const esp=caixaEsperadoPartes().centavos;
+  const cx=caixaEsperadoPartes(),esp=cx.centavos;
   // null = a carga falhou (avisa); ausente = ainda nao carregou nada (lista vazia)
   const lista=DB.conferencias===null?null:(Array.isArray(DB.conferencias)?DB.conferencias:[]);
   const ultima=lista?lista.filter(c=>c.situacao==='valida')[0]:null;
@@ -2441,7 +2461,7 @@ function renderConferenciaCaixa(){
       <div class="ir"><span>Diferença</span><span style="color:${e.cor};font-weight:600">${brlCentavos(ultima.diferenca,true)}</span></div>
       <div class="ir" style="border:none"><span>Estado</span><span style="color:${e.cor};font-weight:600">${ultima.diferenca===0?'Confere':'Existe diferença'}</span></div>`;}
   topo.innerHTML=`<div class="ir"><span style="font-weight:500">Caixa esperado agora</span><span style="font-size:17px;font-weight:600;color:${esp<0?'var(--r)':'var(--text)'}">${brlCentavos(esp)}</span></div>
-    <p style="font-size:10px;color:var(--sub);margin:2px 0 8px">Recebido das vendas (fiado só quando quitado) − todas as saídas, desde o início. Compra de mercadoria não entra: quem paga é o Víctor.</p>${ult}`;
+    <p style="font-size:10px;color:var(--sub);margin:2px 0 8px">Recebido das vendas (fiado só quando quitado) − saídas, desde o início até hoje. Compra de mercadoria não entra: quem paga é o Víctor.${cx.futuros?` ${cx.futuros} lançamento(s) com data futura ainda não entram.`:''}</p>${ult}`;
   const corpo=document.getElementById('confBody'),cards=document.getElementById('confCards'),vazio=document.getElementById('confVazio');
   if(!corpo)return;
   const f=lista?confFiltradas():[];
@@ -2474,6 +2494,9 @@ async function abrirConferenciaCaixa(){
   }
   CONF.esperado=centavosDe(v);
   document.getElementById('confEsperado').textContent=brlCentavos(CONF.esperado);
+  // cartão cai em 1–2 dias: o que foi vendido hoje e ontem pode ainda não estar na conta
+  const cr=caixaEsperadoPartes().cartaoRecente,aviso=document.getElementById('confCartao');
+  if(aviso)aviso.textContent=cr>0?'Inclui '+brlCentavos(cr)+' de vendas no cartão de hoje e ontem, que podem ainda não ter caído na conta.':'';
   previaConferenciaCaixa();
 }
 function previaConferenciaCaixa(){
@@ -2542,8 +2565,9 @@ function renderFin(){
   const tipoMap={prolabore:'Pró-labore',retirada:'Retirada',fornecedor:'Fornecedor',despesa:'Despesa',imposto:'Imposto',outros:'Outros'};
   const tipoBadge={prolabore:'bpro',retirada:'bret',fornecedor:'bfiad',despesa:'bdin',imposto:'bcred',outros:'bdin'};
   const ativas=DB.vendas.filter(v=>!v.cancelada);
-  const tot=DB.saidas.reduce((a,s)=>a+s.val,0),totL=ativas.reduce((a,v)=>a+v.lucroLiq,0),custoTot=ativas.reduce((a,v)=>a+(v.custo||0),0);
   const cx=caixaEsperadoPartes(),recebidoTot=cx.recebido;
+  // saídas até hoje, para a fileira fechar: entradas − saídas = resultado (a lista abaixo mostra todas)
+  const tot=cx.saidas,totL=ativas.reduce((a,v)=>a+v.lucroLiq,0),custoTot=ativas.reduce((a,v)=>a+(v.custo||0),0);
   const fiadoAberto=DB.vendas.filter(v=>v.pgto==='fiado'&&!v.quitado&&!v.cancelada).reduce((a,v)=>a+v.bruto,0);
   const resultado=cx.centavos/100;
   renderConferenciaCaixa();
@@ -2661,7 +2685,8 @@ async function delSaida(id){
   showLoading('Removendo...');
   try{await sbDelete('saidas',id);const s=DB.saidas.find(x=>x.id===id);if(s)await audit('FINANCEIRO_EXCLUIDO',`${s.desc} — ${R(s.val)} excluído por ${currentUser}`);DB.saidas=DB.saidas.filter(s=>s.id!==id);}
   catch(e){hideLoading();showToast('Erro ao remover.','err');return;}
-  hideLoading();renderFin();renderDash();showToast('Lançamento removido.');
+  const razaoOk=s0.tipo!=='fornecedor'||await recarregarRazao();
+  hideLoading();renderFin();renderDash();showToast('Lançamento removido.'+(razaoOk?'':RAZAO_MSG_RELER),razaoOk?undefined:'warn');
 }
 
 // ============================================================
@@ -3102,8 +3127,9 @@ async function estornarCompra(id){
   DB.reposicoes=DB.reposicoes.filter(x=>x.id!==r.id);
   if(sAuto)DB.saidas=DB.saidas.filter(s=>s.id!==sAuto.id);
   if(res&&res.produto){const pr=mapProd(res.produto);const alvo=getProd(pr.id);if(alvo)Object.assign(alvo,pr);}
+  const razaoOk=await recarregarRazao();
   hideLoading();populateLotes();renderAll();
-  showToast(res&&res.repetida?'Esta compra já tinha sido estornada.':(res&&res.recalculou_custo?'Compra estornada. Estoque e custo médio voltaram ao que eram.':'Compra estornada. O custo médio foi mantido — houve venda depois desta compra.'));
+  showToast((res&&res.repetida?'Esta compra já tinha sido estornada.':(res&&res.recalculou_custo?'Compra estornada. Estoque e custo médio voltaram ao que eram.':'Compra estornada. O custo médio foi mantido — houve venda depois desta compra.'))+(razaoOk?'':RAZAO_MSG_RELER),razaoOk?undefined:'warn');
 }
 function exportLotes(){
   dlCSV('vs_lotes_validade.csv',

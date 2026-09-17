@@ -185,7 +185,7 @@ begin
 
   -- ---------------------------------------------------------------- foto: o caixa muda, a conferência não
   insert into public.saidas (id, tipo, socio, descricao, data, val, pgto)
-  values ((select coalesce(max(id), 0) + 1 from public.saidas), 'outros', null, 'TESTE conferencia (revertido)', current_date, 10.00, 'pix');
+  values ((select coalesce(max(id), 0) + 1 from public.saidas), 'outros', null, 'TESTE conferencia (revertido)', (now() at time zone 'America/Sao_Paulo')::date, 10.00, 'pix');
   esp2 := public.vsp_caixa_esperado_calc();
   select * into c from public.conferencias_caixa where id = id_igual;
   if esp2 = esp - 10 and c.saldo_esperado = esp and c.diferenca = 0 then ok := ok + 1;
@@ -196,10 +196,10 @@ begin
   -- a maior saída fica menor. As duas coisas são desfeitas pela exceção final.
   if esp2 + 3.49 > 0 then
     insert into public.saidas (id, tipo, socio, descricao, data, val, pgto)
-    values ((select coalesce(max(id), 0) + 1 from public.saidas), 'outros', null, 'TESTE negativo (revertido)', current_date, esp2 + 3.49, 'pix');
+    values ((select coalesce(max(id), 0) + 1 from public.saidas), 'outros', null, 'TESTE negativo (revertido)', (now() at time zone 'America/Sao_Paulo')::date, esp2 + 3.49, 'pix');
   else
     update public.saidas set val = val + (esp2 + 3.49)
-     where id = (select id from public.saidas order by val desc, id limit 1);
+     where id = (select id from public.saidas where tipo <> 'fornecedor' order by val desc, id limit 1);  -- fornecedor nao se edita (008)
   end if;
   perform set_config('request.jwt.claims', json_build_object('sub', uv, 'role', 'authenticated')::text, true);
   perform set_config('request.jwt.claim.sub', uv::text, true);

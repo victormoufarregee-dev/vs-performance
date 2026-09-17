@@ -160,4 +160,24 @@ console.log(contratoOk
   ? 'CONTRATO DO BANCO: ok, ' + Object.keys(contrato).length + ' funcoes das migrations = producao (' + (fotoContrato.tirada_em || '?') + '); ' + rpcsDoApp.length + ' RPCs do app existem; view do extrato protegida'
   : 'CONTRATO DO BANCO DIVERGE: ' + contratoProblemas.join('; '));
 
-process.exit(erros || !contratoOk || !confOk || !filaOk || !identidadeOk || ausentes.length || achados.length || semId.length || voltou.length || faltam.length || legadoVoltou.length || semLedger.length ? 1 : 0);
+// 12) o razao acompanha TODO lancamento (008). Ate 17/09/2026 estornar compra, lancar ou
+//     excluir pagamento ao fornecedor pelo Financeiro nao mexia na Conta do Victor.
+//     O contrato compara corpo de funcao; os triggers em si sao conferidos aqui.
+const sql008 = fs.readFileSync(path.join(MIGRACOES, '008_integridade_razao_caixa.sql'), 'utf8').replace(/\r\n/g, '\n')
+  .replace(/^\s*--.*$/gm, '');
+const razaoProblemas = [
+  ['create trigger trg_lv_saida_inserida after insert on public.saidas', 'pagamento ao fornecedor nao credita o razao'],
+  ['create trigger trg_lv_saida_excluida after delete on public.saidas', 'excluir pagamento nao estorna o credito'],
+  ['create trigger trg_lv_saida_editada before update on public.saidas', 'pagamento ao fornecedor editavel'],
+  ['create trigger trg_lv_reposicao_excluida after delete on public.reposicoes', 'estornar compra nao estorna o debito'],
+  ['revoke execute on function public.vsp_ledger_estornar_origem(text,bigint,text) from authenticated', 'estorno do razao executavel pela API'],
+].filter(([t]) => !sql008.includes(t)).map(([, m]) => m);
+if (!/v\.data <= \(now\(\) at time zone 'America\/Sao_Paulo'\)::date/.test(sql008) ||
+    !/s\.data <= \(now\(\) at time zone 'America\/Sao_Paulo'\)::date/.test(sql008))
+  razaoProblemas.push('caixa esperado volta a somar lancamento futuro');
+const razaoOk = !razaoProblemas.length;
+console.log(razaoOk
+  ? 'RAZAO E CAIXA: ok, triggers do razao em saidas/reposicoes, estorno fechado para a API, caixa so ate hoje'
+  : 'RAZAO E CAIXA QUEBRADO: ' + razaoProblemas.join('; '));
+
+process.exit(erros || !razaoOk || !contratoOk || !confOk || !filaOk || !identidadeOk || ausentes.length || achados.length || semId.length || voltou.length || faltam.length || legadoVoltou.length || semLedger.length ? 1 : 0);
