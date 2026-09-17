@@ -441,6 +441,17 @@ const MUTANTES = [
     ]],
   },
   {
+    id: 'PERM-M1',
+    titulo: 'backfill do razão volta a ser executável pela API',
+    oQueMuda: 'a 009 deixa de revogar vsp_ledger_backfill de authenticated',
+    arquivo: 'migrations/009_backfill_fechado.sql',
+    trocas: [[
+      'revoke execute on function public.vsp_ledger_backfill() from public, anon, authenticated;',
+      'revoke execute on function public.vsp_ledger_backfill() from public, anon;',
+      1,
+    ]],
+  },
+  {
     id: 'RZ-M3',
     titulo: 'saldo do Victor volta a ser legível fora da allowlist',
     oQueMuda: 'a 008 tira a checagem de autorização de vsp_saldo_victor',
@@ -559,6 +570,7 @@ const SINAIS_ESTATICO = [
   /^CONFERENCIA DE CAIXA QUEBRADA.*$/m,
   /^CONTRATO DO BANCO DIVERGE.*$/m,
   /^RAZAO E CAIXA QUEBRADO.*$/m,
+  /^PERMISSOES QUEBRADAS.*$/m,
 ];
 
 function sinaisEstatico(saida) {

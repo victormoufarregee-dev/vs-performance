@@ -368,3 +368,15 @@ describe('Higiene geral do arquivo unico', () => {
       ' e falta ' + irmaos.filter((f) => !presentes.includes(f)).join(', '));
   });
 });
+
+describe('Backup — o texto não promete o que não entrega', () => {
+  const HTML2 = require('fs').readFileSync(require('./harness.js').resolverIndex(), 'utf8');
+  it('a tela de backup não chama a cópia do app de completa e aponta o backup do Supabase', () => {
+    const i = HTML2.indexOf('Backup dos dados</p>');
+    assertMaior(i, 0, 'o card existe');
+    const card = HTML2.slice(i, i + 1200);
+    assertFalse(/c&oacute;pia completa <strong>/.test(card), 'nao diz "copia completa"');
+    assertMatch(card, /N&atilde;o &eacute; c&oacute;pia completa do sistema/, 'diz que nao e completa');
+    assertMatch(card, /backup di&aacute;rio do banco no Supabase/, 'aponta a recuperacao real');
+  });
+});

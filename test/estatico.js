@@ -180,4 +180,24 @@ console.log(razaoOk
   ? 'RAZAO E CAIXA: ok, triggers do razao em saidas/reposicoes, estorno fechado para a API, caixa so ate hoje'
   : 'RAZAO E CAIXA QUEBRADO: ' + razaoProblemas.join('; '));
 
-process.exit(erros || !razaoOk || !contratoOk || !confOk || !filaOk || !identidadeOk || ausentes.length || achados.length || semId.length || voltou.length || faltam.length || legadoVoltou.length || semLedger.length ? 1 : 0);
+// 13) quem executa o que (009). O backfill do razao e administrativo: nenhuma sessao do app
+//     executa. As portas legitimas do app continuam com EXECUTE para authenticated (a
+//     seguranca delas e allowlist + autor pela sessao, provada em test/sql/).
+const PORTAS_DO_APP = ['vsp_ator', 'vsp_autorizado', 'vsp_caixa_esperado', 'vsp_cancelar_venda', 'vsp_estornar_compra',
+  'vsp_invalidar_conferencia_caixa', 'vsp_reembolsar_victor', 'vsp_registrar_compra', 'vsp_registrar_conferencia_caixa',
+  'vsp_registrar_venda', 'vsp_saldo_victor'];
+const permProblemas = [];
+const sql009Arq = path.join(MIGRACOES, '009_backfill_fechado.sql');
+const sql009 = fs.existsSync(sql009Arq) ? fs.readFileSync(sql009Arq, 'utf8').replace(/\r\n/g, '\n').replace(/^\s*--.*$/gm, '') : '';
+if (!sql009.includes('revoke execute on function public.vsp_ledger_backfill() from public, anon, authenticated'))
+  permProblemas.push('009 nao revoga o backfill de authenticated');
+const comAuth = Object.entries(fotoContrato.funcoes).filter(([, v]) => v.authenticated && v.ret !== 'trigger')
+  .map(([k]) => k.split('(')[0]).sort();
+const sobrando = comAuth.filter((n) => !PORTAS_DO_APP.includes(n));
+if (sobrando.length) permProblemas.push('authenticated executa em producao: ' + sobrando.join(', '));
+const permOk = !permProblemas.length;
+console.log(permOk
+  ? 'PERMISSOES: ok, authenticated so executa as ' + comAuth.length + ' portas do app; backfill fechado (009)'
+  : 'PERMISSOES QUEBRADAS: ' + permProblemas.join('; '));
+
+process.exit(!permOk || erros || !razaoOk || !contratoOk || !confOk || !filaOk || !identidadeOk || ausentes.length || achados.length || semId.length || voltou.length || faltam.length || legadoVoltou.length || semLedger.length ? 1 : 0);
