@@ -442,8 +442,20 @@ Contexto que pesa:
   da faixa (histograma dos frascos: 1×**1**, 1×250, 3×300, 20×350, 1×375, 6×400, 2×1300).
 - **A observação foi escrita à mão**: "Parceria". Erro de digitação não vem com justificativa.
 
-**Conclusão técnica: não há evidência de erro; há evidência positiva de intenção.** Continua
-como lançamento intencional, pendente apenas de confirmação do Victor. **Nada foi alterado.**
+**Conclusão técnica: não há evidência de erro; há evidência positiva de intenção.**
+
+**Confirmado pelo Victor em 17/09/2026: foi uma parceria, de propósito.** A venda fica como
+está. **Nada foi alterado** — nem antes nem depois da confirmação.
+
+Efeito contábil, que é real e está certo: a mercadoria saiu, o custo de R$ 150,91 foi lançado,
+e a linha fecha com **lucro de −R$ 149,91**. É o preço da cortesia, e é assim que tem de
+aparecer — o estoque baixou de verdade.
+
+**Não contamina relatório nenhum.** A margem consolidada do app é calculada sobre os totais
+(`margemPct(bruto_total, lucro_total)`), não pela média das margens linha a linha. O
+−14991% dessa venda só aparece na própria linha do histórico e no CSV; nenhum indicador de
+período usa esse número. No agregado ela entra como o que é: R$ 1,00 de receita e
+−R$ 149,91 de lucro, dentro dos R$ 51.066,00 e dos R$ 27.526,70 do período.
 
 ---
 
@@ -482,8 +494,8 @@ auditoria 264 · última 2026-09-17T16:44:49.35Z   ← igual à de antes
    investigação e sem lançamento de ajuste.
 2. **Smoke de venda/cancelamento na UI**, com login real, refresh e reentrada.
 3. **Smoke offline em aparelho real**, com rede caindo de verdade (roteiro em `SMOKE_OFFLINE.md`).
-4. **Decidir sobre a venda de R$ 1,00 de 29/07** (seção 10D): confirmar que foi de propósito, ou
-   pedir o cancelamento. Enquanto não decidir, fica como está.
+4. ~~Decidir sobre a venda de R$ 1,00 de 29/07~~ — **confirmada pelo Victor em 17/09/2026**:
+   foi uma parceria, de propósito. Fica como está (ver 10D).
 
 ## 14. Próximos passos recomendados (nenhum urgente)
 
