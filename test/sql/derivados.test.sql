@@ -102,8 +102,10 @@ begin
   exception when others then ok := ok + 1; end;
 
   -- D12 — fiado zera lucro e margem
+  -- sem taxa: os derivados de taxa saem do payload para o banco recalcular
   r := public.vsp_registrar_venda(
-         jsonb_set(jsonb_set(jsonb_set(base, '{id}', to_jsonb(id1 + 10)), '{pgto}', '"fiado"'), '{taxa}', to_jsonb(0)),
+         jsonb_set(jsonb_set(jsonb_set(base, '{id}', to_jsonb(id1 + 10)), '{pgto}', '"fiado"'), '{taxa}', to_jsonb(0))
+           - 'taxa_val' - 'liq' - 'lucro_liq' - 'margem',
          'der-fiado');
   select * into v from vendas where op_id = 'der-fiado';
   if v.lucro_liq = 0 and v.margem = 0 and v.liq = 900 then ok := ok + 1;
