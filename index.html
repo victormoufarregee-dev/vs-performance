@@ -685,6 +685,7 @@ input,select,textarea{font-size:16px;padding:11px 12px}
 <div id="simModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'simModal')"><div class="modal" style="max-width:640px"><h3><i class="ti ti-calculator"></i> Simulador de pre&ccedil;o</h3><div class="fr3"><div class="fg"><label>Produto</label><select id="simProd" onchange="calcSimulador()"></select></div><div class="fg"><label>Tipo</label><select id="simTipo" onchange="calcSimulador()"></select></div><div class="fg"><label>Margem desejada (%)</label><input type="number" id="simMargem" value="50" min="1" max="95" oninput="calcSimulador()"/></div></div><div id="simBody"></div><div style="display:flex;justify-content:flex-end;margin-top:1rem"><button class="btn" onclick="closeModal('simModal')">Fechar</button></div></div></div>
 <div id="ajudaModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'ajudaModal')"><div class="modal" style="max-width:480px"><h3 id="ajudaTit"></h3><div id="ajudaBody" class="ajuda-body"></div><div style="display:flex;justify-content:flex-end;margin-top:1rem"><button class="btn" onclick="closeModal('ajudaModal')">Entendi</button></div></div></div>
 <div id="loteModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'loteModal')"><div class="modal"><h3>Lote e validade da compra</h3><input type="hidden" id="loteRepId"/><p id="loteInfo" style="font-size:12px;color:var(--sub);margin-bottom:1rem"></p><div class="fr"><div class="fg"><label>Lote</label><input type="text" id="loteCod" placeholder="Ex: L2407A"/></div><div class="fg"><label>Validade</label><input type="date" id="loteVal"/></div></div><div class="fg" style="margin-bottom:1rem"><label>Anota&ccedil;&otilde;es (campo livre)</label><textarea id="loteNota" placeholder="Fabricante, transporte, nota fiscal, quem entregou, aspecto do produto..." style="resize:vertical;height:90px;font-size:12px"></textarea></div><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn-s" onclick="closeModal('loteModal')">Cancelar</button><button class="btn" onclick="salvarLote()"><i class="ti ti-check"></i> Salvar</button></div></div></div>
+<div id="filaModal" class="modal-ov" style="display:none" onclick="closeMifBg(event,'filaModal')"><div class="modal" style="max-width:520px"><h3><i class="ti ti-cloud-upload"></i> Operações guardadas neste aparelho</h3><p style="font-size:12px;color:var(--sub);margin-bottom:10px">Só contam como registradas quando aparecem como <strong>Confirmado pelo servidor</strong>. Enquanto isso ficam guardadas aqui, mesmo se você fechar o app.</p><div id="filaBody"></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:1rem;flex-wrap:wrap"><button class="btn-s" onclick="closeModal('filaModal')">Fechar</button><button class="btn" onclick="enviarAgoraFila()"><i class="ti ti-send"></i> Enviar agora</button></div></div></div>
 <div id="toast" class="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
@@ -702,20 +703,366 @@ const H={'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bear
 let refreshToken='';
 
 // ============================================================
-// MODO OFFLINE — fila de envio + copia local dos dados
+// MODO OFFLINE — fila persistente de INTENCOES + copia local dos dados
 // ============================================================
-const FILA_KEY='vsp_fila_v1', CACHE_KEY='vsp_cache_v1';
-let fila=[];
+// O que fica guardado aqui NAO e regra de negocio: e a intencao do usuario ("vender 1 caixa
+// de TG para Fulano"), com o op_id que nasceu no clique. Quem decide se a venda cabe no
+// estoque e o banco, quando a intencao chegar. Por isso:
+//   - a intencao so e anunciada como "Salvo neste aparelho" DEPOIS de gravada e relida;
+//   - o op_id nunca muda: reenviar a mesma intencao cai na idempotencia da RPC;
+//   - nada e anunciado como sincronizado antes de o servidor confirmar;
+//   - recusa definitiva (estoque acabou, produto inexistente, sem permissao) vira
+//     'conflito'/'falhou' e fica visivel ate o usuario decidir — nunca some, nunca repete sozinha.
+// Estados: pendente -> enviando -> confirmado | falhou | conflito.
+// Armazenamento: IndexedDB (um registro por intencao, transacao por registro — duas abas nao
+// sobrescrevem a fila uma da outra). Sem IndexedDB, localStorage com uma chave por intencao.
+// Sem nenhum dos dois, nada e prometido: a operacao offline e recusada com aviso.
+const FILA_KEY_V1='vsp_fila_v1', CACHE_KEY='vsp_cache_v1';
+const FILA_DB='vsp_offline', FILA_STORE='intencoes', FILA_LS_PREFIXO='vsp_fila2:';
+const FILA_VERSAO_PAYLOAD=1;
+const FILA_ORFAO_MS=120000;          // 'enviando' parado ha mais que isso = aba fechou no meio do envio
+const FILA_MAX_TENTATIVAS_SERVIDOR=12; // erro 5xx/429 repetido: para de insistir e pede atencao
+const FILA_GUARDA_CONFIRMADOS_MS=7*24*3600e3, FILA_MAX_CONFIRMADOS=50;
+const SB_PRAZO_ESCRITA_MS=20000, SB_PRAZO_LEITURA_MS=30000;
+const FILA_ABA=(()=>{try{if(crypto&&crypto.randomUUID)return crypto.randomUUID();}catch(e){}return 'aba-'+Date.now()+'-'+Math.random().toString(36).slice(2);})();
+const FILA_TIPOS={
+  venda:{rotulo:'Venda',rpc:'vsp_registrar_venda'},
+  compra:{rotulo:'Compra',rpc:'vsp_registrar_compra'},
+  cliente:{rotulo:'Cadastro de cliente',tabela:'clientes'},
+  legado:{rotulo:'Lançamento antigo'}
+};
+let fila=[];                // espelho do armazenamento, so para a tela ler
 let semRede=false;
+let filaTrabalhando=false;  // trava desta aba (a trava entre abas e navigator.locks + troca atomica de status)
+let filaSeq=0;
 function lsGet(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch(e){return null;}}
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true;}catch(e){return false;}}
 function lsDel(k){try{localStorage.removeItem(k);}catch(e){}}
+function filaAgoraIso(){return new Date().toISOString();}
 
-function carregarFila(){fila=lsGet(FILA_KEY)||[];}
-function salvarFila(){lsSet(FILA_KEY,fila);renderOffBar();}
-function enfileirar(url,opts){
-  fila.push({url,method:(opts.method||'GET').toUpperCase(),body:opts.body||null,quando:getNow().display,erro:''});
-  salvarFila();
+// ---------- armazenamento ----------
+const armazemFila=(function(){
+  let modo=null, db=null, iniciando=null;
+  function abrirIdb(){
+    return new Promise((ok,nok)=>{
+      let req;
+      try{req=indexedDB.open(FILA_DB,1);}catch(e){nok(e);return;}
+      req.onupgradeneeded=()=>{const b=req.result;if(!b.objectStoreNames.contains(FILA_STORE))b.createObjectStore(FILA_STORE,{keyPath:'id_local'});};
+      req.onsuccess=()=>ok(req.result);
+      req.onerror=()=>nok(req.error||new Error('IndexedDB recusou'));
+      req.onblocked=()=>nok(new Error('IndexedDB bloqueado'));
+    });
+  }
+  async function iniciar(){
+    if(modo)return modo;
+    if(iniciando)return iniciando;
+    iniciando=(async()=>{
+      try{if(typeof indexedDB!=='undefined'&&indexedDB){db=await abrirIdb();modo='idb';return modo;}}catch(e){db=null;}
+      try{localStorage.setItem(FILA_LS_PREFIXO+'teste','1');localStorage.removeItem(FILA_LS_PREFIXO+'teste');modo='ls';}
+      catch(e){modo='nenhum';}
+      return modo;
+    })();
+    return iniciando;
+  }
+  // uma transacao readwrite por operacao; resolve so no oncomplete (gravado de verdade)
+  function txIdb(escrita,corpo){
+    return new Promise((ok,nok)=>{
+      let t,saida;
+      try{t=db.transaction(FILA_STORE,escrita?'readwrite':'readonly');}catch(e){nok(e);return;}
+      t.oncomplete=()=>ok(saida);
+      t.onerror=()=>nok(t.error||new Error('falha ao gravar no aparelho'));
+      t.onabort=()=>nok(t.error||new Error('gravacao no aparelho abortada'));
+      try{corpo(t.objectStore(FILA_STORE),v=>{saida=v;});}catch(e){try{t.abort();}catch(x){}nok(e);}
+    });
+  }
+  function lsChaves(){const ks=[];try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.indexOf(FILA_LS_PREFIXO)===0&&k!==FILA_LS_PREFIXO+'teste')ks.push(k);}}catch(e){}return ks;}
+  return {
+    iniciar,
+    modo:()=>modo,
+    async todos(){
+      await iniciar();
+      if(modo==='idb')return txIdb(false,(st,res)=>{const r=st.getAll();r.onsuccess=()=>res(r.result||[]);});
+      if(modo==='ls')return lsChaves().map(k=>lsGet(k)).filter(Boolean);
+      return [];
+    },
+    // grava e RELE: so devolve true se o que esta no aparelho e o que foi pedido
+    async gravar(item){
+      await iniciar();
+      if(modo==='idb'){
+        await txIdb(true,st=>{st.put(item);});
+        const lido=await txIdb(false,(st,res)=>{const r=st.get(item.id_local);r.onsuccess=()=>res(r.result);});
+        return !!(lido&&lido.op_id===item.op_id&&lido.status===item.status);
+      }
+      if(modo==='ls'){
+        if(!lsSet(FILA_LS_PREFIXO+item.id_local,item))return false;
+        const lido=lsGet(FILA_LS_PREFIXO+item.id_local);
+        return !!(lido&&lido.op_id===item.op_id&&lido.status===item.status);
+      }
+      return false;
+    },
+    async apagar(id){
+      await iniciar();
+      if(modo==='idb')return txIdb(true,st=>{st.delete(id);});
+      if(modo==='ls')lsDel(FILA_LS_PREFIXO+id);
+    },
+    // troca atomica: le, decide e grava na MESMA transacao. `fn` devolve o novo registro ou
+    // null para nao mexer. E isso que impede duas abas de pegarem a mesma intencao.
+    async atualizar(id,fn){
+      await iniciar();
+      if(modo==='idb'){
+        return txIdb(true,(st,res)=>{
+          const r=st.get(id);
+          r.onsuccess=()=>{const novo=r.result?fn(r.result):null;if(novo){st.put(novo);res(novo);}else res(null);};
+        });
+      }
+      if(modo==='ls'){
+        const atual=lsGet(FILA_LS_PREFIXO+id);
+        const novo=atual?fn(atual):null;
+        if(!novo)return null;
+        return lsSet(FILA_LS_PREFIXO+id,novo)?novo:null;
+      }
+      return null;
+    }
+  };
+})();
+
+function filaOrdenar(lista){return lista.slice().sort((a,b)=>(a.seq-b.seq)||String(a.id_local).localeCompare(String(b.id_local)));}
+async function filaRecarregar(){
+  try{fila=filaOrdenar(await armazemFila.todos());}catch(e){}
+  renderOffBar();
+  return fila;
+}
+function filaAbertos(){return fila.filter(f=>f.status!=='confirmado');}
+function filaAtencao(){return fila.filter(f=>f.status==='falhou'||f.status==='conflito');}
+
+// Guarda uma intencao. Devolve o registro gravado, ou null se o aparelho nao guardou.
+// Mesma intencao (mesmo tipo + op_id) ainda aberta = devolve a que ja existe, sem duplicar.
+async function filaGuardar(tipo,opId,payload,extra){
+  extra=extra||{};
+  try{
+    await armazemFila.iniciar();
+    if(armazemFila.modo()==='nenhum')return null;
+    const existentes=await armazemFila.todos();
+    const igual=existentes.find(f=>f.tipo===tipo&&f.op_id===opId&&f.status!=='confirmado');
+    if(igual){await filaRecarregar();return igual;}
+    const agora=filaAgoraIso();
+    const item={
+      id_local:'loc-'+Date.now().toString(36)+'-'+(++filaSeq)+'-'+Math.random().toString(36).slice(2,8),
+      seq:Date.now()*1000+(filaSeq%1000),
+      op_id:opId,tipo,payload,versao_payload:FILA_VERSAO_PAYLOAD,
+      criado_em:agora,atualizado_em:agora,status:'pendente',
+      tentativas:0,ultima_tentativa_em:null,proxima_tentativa_em:null,ultimo_erro:'',erro_tipo:null,
+      usuario:currentUser||'',depende_de:extra.depende_de||[],resumo:extra.resumo||'',resultado:null,dono:null
+    };
+    const ok=await armazemFila.gravar(item);
+    // pede ao navegador para nao despejar o armazenamento deste site quando faltar espaco
+    // (o Safari/iOS e o Chrome podem apagar dados de site "nao persistente")
+    if(ok){try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});}catch(e){}}
+    await filaRecarregar();
+    return ok?item:null;
+  }catch(e){return null;}
+}
+
+// ---------- classificacao da resposta ----------
+// transitorio = tenta de novo sozinho (sem rede, prazo, 5xx, 429)
+// conflito    = o mundo mudou enquanto estava offline (estoque) — so o usuario decide
+// permanente  = nao adianta repetir (dado invalido, produto inexistente, sem permissao)
+function filaClassificar(status,corpo){
+  const msg=String((corpo&&(corpo.message||corpo.hint||corpo.details))||'');
+  if(status>=200&&status<300)return 'ok';
+  if(status===408||status===425||status===429||status>=500)return 'transitorio';
+  if(/estoque insuficiente|estoque mudou/i.test(msg))return 'conflito';
+  return 'permanente';
+}
+function filaTextoErro(classe,status,corpo){
+  const msg=String((corpo&&corpo.message)||'').trim();
+  if(classe==='conflito')return 'Não foi possível concluir: o estoque mudou enquanto você estava offline.'+(msg?' ('+msg+')':'');
+  if(status===401||status===403)return 'O servidor não aceitou a sessão. Entre no app de novo e toque em "Tentar de novo".';
+  if(classe==='transitorio')return 'O servidor não respondeu direito (HTTP '+status+'). Vou tentar de novo sozinho.';
+  return 'O servidor recusou: '+(msg||('HTTP '+status))+'.';
+}
+
+// Envia UMA intencao. Nunca lanca: devolve {classe, status, corpo, texto, rede}.
+async function filaEnviarItem(item){
+  const def=FILA_TIPOS[item.tipo];
+  let url,opts;
+  if(item.tipo==='legado'){
+    url=item.payload.url;opts={method:item.payload.method,headers:{...H,'Prefer':'return=representation'},body:item.payload.body};
+  }else if(def&&def.rpc){
+    // o op_id vem do REGISTRO, sempre: nenhuma tentativa inventa um novo
+    const params=Object.assign({},item.payload,{p_op_id:item.op_id});
+    url=`${SB_URL}/rest/v1/rpc/${def.rpc}`;opts={method:'POST',headers:{...H},body:JSON.stringify(params)};
+  }else if(def&&def.tabela){
+    url=`${SB_URL}/rest/v1/${def.tabela}`;opts={method:'POST',headers:{...H,'Prefer':'return=representation'},body:JSON.stringify(item.payload)};
+  }else{
+    return {classe:'permanente',status:0,texto:'Tipo de operação desconhecido ('+item.tipo+') — atualize o app.'};
+  }
+  let r;
+  try{r=await sbFetch(url,opts);}
+  catch(e){return {classe:'transitorio',rede:true,status:0,texto:e&&e.prazo?'A conexão demorou demais. Vou tentar de novo quando a internet estabilizar.':'Sem internet. Será enviado quando a conexão voltar.'};}
+  let corpo=null;try{const t=await r.text();corpo=t?JSON.parse(t):null;}catch(e){}
+  // cadastro de cliente: o id nasce no aparelho. 409 = esse id ja existe; so e "o mesmo
+  // cadastro" se o telefone bater — senao e outro cliente com o mesmo codigo.
+  if(item.tipo==='cliente'&&r.status===409){
+    try{
+      const g=await sbFetch(`${SB_URL}/rest/v1/clientes?id=eq.${encodeURIComponent(item.payload.id)}`,{headers:{...H}});
+      const linhas=g.ok?await g.json():[];
+      const soDig=s=>String(s||'').replace(/\D/g,'');
+      if(Array.isArray(linhas)&&linhas[0]&&soDig(linhas[0].tel)===soDig(item.payload.tel))return {classe:'ok',status:409,corpo:{repetida:true,cliente:linhas[0]}};
+      return {classe:'conflito',status:409,corpo,texto:'Não foi possível concluir: já existe outro cliente com o mesmo código.'};
+    }catch(e){return {classe:'transitorio',rede:true,status:0,texto:'Sem internet. Será enviado quando a conexão voltar.'};}
+  }
+  const classe=filaClassificar(r.status,corpo);
+  return {classe,status:r.status,corpo,texto:classe==='ok'?'':filaTextoErro(classe,r.status,corpo)};
+}
+
+function filaEspera(tentativas){return Math.min(300000,5000*Math.pow(2,Math.max(0,tentativas-1)));}
+function filaOrfao(it,agora){return it.status==='enviando'&&(!it.ultima_tentativa_em||agora-Date.parse(it.ultima_tentativa_em)>FILA_ORFAO_MS);}
+
+async function filaLimparConfirmados(todos){
+  const agora=Date.now();
+  const abertos=todos.filter(f=>f.status!=='confirmado');
+  const conf=filaOrdenar(todos.filter(f=>f.status==='confirmado')).reverse();
+  for(let i=0;i<conf.length;i++){
+    const f=conf[i];
+    const velho=agora-Date.parse(f.atualizado_em||f.criado_em)>FILA_GUARDA_CONFIRMADOS_MS;
+    if((velho||i>=FILA_MAX_CONFIRMADOS)&&!abertos.some(a=>(a.depende_de||[]).includes(f.id_local))){
+      try{await armazemFila.apagar(f.id_local);}catch(e){}
+    }
+  }
+}
+
+async function comTravaFila(fn){
+  try{
+    if(typeof navigator!=='undefined'&&navigator.locks&&navigator.locks.request){
+      return await navigator.locks.request('vsp_fila_envio',{ifAvailable:true},async lock=>lock?fn():'ocupado');
+    }
+  }catch(e){}
+  return fn();
+}
+
+// O unico trabalhador da fila. Ordem FIFO; um item recusado NAO segura os independentes;
+// queda de rede interrompe a rodada (os seguintes cairiam do mesmo jeito).
+async function processarFila(manual){
+  if(filaTrabalhando)return 'ocupado';
+  if(!authToken){
+    await filaRecarregar();
+    if(manual&&filaAbertos().length)showToast('Entre no app para enviar as operações guardadas neste aparelho.','warn');
+    return 'sem-sessao';
+  }
+  if(!manual&&typeof navigator!=='undefined'&&navigator.onLine===false){await filaRecarregar();return 'sem-rede';}
+  filaTrabalhando=true;renderOffBar();
+  const placar={confirmados:0,conflitos:0,falhas:0,rede:false};
+  try{
+    await comTravaFila(async()=>{
+      let todos=filaOrdenar(await armazemFila.todos());
+      await filaLimparConfirmados(todos);
+      todos=filaOrdenar(await armazemFila.todos());
+      const estado={};todos.forEach(f=>{estado[f.id_local]=f;});
+      for(const it of todos){
+        const agora=Date.now();
+        if(!(it.status==='pendente'||filaOrfao(it,agora)))continue;
+        if(it.usuario&&currentUser&&it.usuario!==currentUser)continue;   // intencao de outra pessoa: espera o login dela
+        if(!manual&&it.proxima_tentativa_em&&Date.parse(it.proxima_tentativa_em)>agora)continue;
+        if((it.versao_payload||0)>FILA_VERSAO_PAYLOAD){
+          const n=await armazemFila.atualizar(it.id_local,a=>a.status==='pendente'?{...a,status:'falhou',erro_tipo:'permanente',ultimo_erro:'Criado por uma versão mais nova do app. Atualize o app neste aparelho.',atualizado_em:filaAgoraIso()}:null);
+          if(n){estado[n.id_local]=n;placar.falhas++;}
+          continue;
+        }
+        const deps=(it.depende_de||[]).map(id=>estado[id]);
+        if(deps.some(d=>!d||d.status==='falhou'||d.status==='conflito')){
+          const n=await armazemFila.atualizar(it.id_local,a=>a.status==='pendente'?{...a,status:'falhou',erro_tipo:'dependencia',ultimo_erro:'Não enviado: uma operação da qual esta depende (ex.: o cadastro do cliente) não foi concluída.',atualizado_em:filaAgoraIso()}:null);
+          if(n){estado[n.id_local]=n;placar.falhas++;}
+          continue;
+        }
+        if(deps.some(d=>d.status!=='confirmado'))continue;
+        // pega a intencao: so troca para 'enviando' se ela AINDA estiver livre
+        const pego=await armazemFila.atualizar(it.id_local,a=>{
+          if(!(a.status==='pendente'||filaOrfao(a,Date.now())))return null;
+          const t=filaAgoraIso();
+          return {...a,status:'enviando',dono:FILA_ABA,tentativas:(a.tentativas||0)+1,ultima_tentativa_em:t,atualizado_em:t};
+        });
+        if(!pego)continue;
+        estado[pego.id_local]=pego;
+        const r=await filaEnviarItem(pego);
+        const t=filaAgoraIso();
+        const final=await armazemFila.atualizar(pego.id_local,a=>{
+          if(a.status!=='enviando'||a.dono!==FILA_ABA)return null;
+          if(r.classe==='ok')return {...a,status:'confirmado',dono:null,ultimo_erro:'',erro_tipo:null,proxima_tentativa_em:null,resultado:filaResumoResultado(r.corpo),atualizado_em:t};
+          if(r.classe==='transitorio'){
+            const servidor=(a.tentativas_servidor||0)+(r.rede?0:1);
+            if(servidor>=FILA_MAX_TENTATIVAS_SERVIDOR)return {...a,status:'falhou',dono:null,tentativas_servidor:servidor,erro_tipo:'permanente',ultimo_erro:'O servidor recusou '+servidor+' vezes seguidas. Toque em "Tentar de novo" mais tarde.',atualizado_em:t};
+            return {...a,status:'pendente',dono:null,tentativas_servidor:servidor,erro_tipo:'transitorio',ultimo_erro:r.texto,proxima_tentativa_em:new Date(Date.now()+filaEspera(a.tentativas)).toISOString(),atualizado_em:t};
+          }
+          return {...a,status:r.classe==='conflito'?'conflito':'falhou',dono:null,erro_tipo:r.classe,ultimo_erro:r.texto,proxima_tentativa_em:null,atualizado_em:t};
+        });
+        if(final){
+          estado[final.id_local]=final;
+          if(final.status==='confirmado')placar.confirmados++;
+          else if(final.status==='conflito')placar.conflitos++;
+          else if(final.status==='falhou')placar.falhas++;
+        }
+        if(r.rede){placar.rede=true;break;}
+      }
+    });
+  }catch(e){}
+  finally{filaTrabalhando=false;}
+  await filaRecarregar();
+  if(placar.confirmados)showToast(placar.confirmados+' operação(ões) guardada(s) no aparelho foram enviadas e confirmadas pelo servidor.');
+  if(placar.conflitos||placar.falhas)showToast((placar.conflitos+placar.falhas)+' operação(ões) não puderam ser concluídas. Toque em "Ver" na barra azul.','err');
+  else if(manual&&placar.rede)showToast('Ainda sem conexão. As operações continuam guardadas neste aparelho.','warn');
+  if(placar.confirmados){try{await sincronizar();}catch(e){}}
+  return placar;
+}
+function filaResumoResultado(c){
+  if(!c||typeof c!=='object')return null;
+  return {repetida:!!c.repetida,venda_id:c.venda&&c.venda.id||null,compra_id:c.compra&&c.compra.id||null,cliente_id:c.cliente&&c.cliente.id||(Array.isArray(c)&&c[0]&&c[0].id)||null};
+}
+
+// Lancamentos da fila antiga (vsp_fila_v1, um array inteiro em localStorage) viram intencoes.
+// So apaga a chave antiga depois que TODOS foram gravados e relidos no armazenamento novo.
+async function filaMigrarV1(){
+  const velha=lsGet(FILA_KEY_V1);
+  if(!Array.isArray(velha)||!velha.length){if(velha)lsDel(FILA_KEY_V1);return 0;}
+  await armazemFila.iniciar();
+  if(armazemFila.modo()==='nenhum')return 0;
+  const existentes=await armazemFila.todos();
+  let ok=0;
+  for(let i=0;i<velha.length;i++){
+    const f=velha[i]||{};
+    let corpo=null;try{corpo=f.body?JSON.parse(f.body):null;}catch(e){}
+    const rota=String(f.url||'').split('/rest/v1/')[1]||'';
+    let tipo='legado',payload={url:f.url,method:f.method,body:f.body},op='v1-'+i+'-'+String(f.quando||'')+'-'+String(f.body||'').length;
+    let status='falhou',erro='Lançamento antigo, guardado por uma versão anterior do app. Confira e toque em "Tentar de novo" se ele ainda deve ser enviado.';
+    if(f.method==='POST'&&/^rpc\/vsp_registrar_venda/.test(rota)&&corpo&&corpo.p_op_id){tipo='venda';op=corpo.p_op_id;payload={p_venda:corpo.p_venda};status='pendente';erro='';}
+    else if(f.method==='POST'&&/^rpc\/vsp_registrar_compra/.test(rota)&&corpo&&corpo.p_op_id){tipo='compra';op=corpo.p_op_id;payload={p_rep:corpo.p_rep};status='pendente';erro='';}
+    else if(f.method==='POST'&&/^clientes/.test(rota)&&corpo&&corpo.id){tipo='cliente';op='cliente-'+corpo.id;payload=corpo;status='pendente';erro='';}
+    if(existentes.some(x=>x.tipo===tipo&&x.op_id===op)){ok++;continue;}
+    const agora=filaAgoraIso();
+    const item={id_local:'v1-'+i+'-'+Date.now().toString(36),seq:i,op_id:op,tipo,payload,versao_payload:FILA_VERSAO_PAYLOAD,
+      criado_em:agora,atualizado_em:agora,status,tentativas:0,ultima_tentativa_em:null,proxima_tentativa_em:null,
+      ultimo_erro:erro||(f.erro?'Erro anterior: '+f.erro:''),erro_tipo:status==='falhou'?'legado':null,usuario:'',depende_de:[],
+      resumo:filaResumoV1(tipo,corpo,f),resultado:null,dono:null};
+    if(await armazemFila.gravar(item))ok++;
+  }
+  if(ok===velha.length)lsDel(FILA_KEY_V1);
+  return ok;
+}
+function filaResumoV1(tipo,corpo,f){
+  if(tipo==='venda'&&corpo&&corpo.p_venda)return filaResumoVenda(corpo.p_venda);
+  if(tipo==='compra'&&corpo&&corpo.p_rep)return filaResumoCompra(corpo.p_rep);
+  if(tipo==='cliente'&&corpo)return corpo.nome||'';
+  const rota=(String(f.url||'').split('/rest/v1/')[1]||'').split('?')[0];
+  return (f.method||'')+' '+rota+(f.quando?' · '+f.quando:'');
+}
+function filaResumoVenda(v){return (prodNome(v.prod)||v.prod)+' · '+(v.qtd||0)+' '+(v.tipo==='caixa'?'caixa(s)':'frasco(s)')+' · '+(v.cliente||'sem cliente')+' · '+R((+v.qtd||0)*(+v.val_final||+v.val_orig||0));}
+function filaResumoCompra(c){return (prodNome(c.prod)||c.prod)+' · '+(c.qtd||0)+' '+(c.tipo==='caixa'?'caixa(s)':'frasco(s)')+' · '+R(+c.cust_total||0);}
+
+// Quanto de cada produto ja esta prometido por vendas guardadas no aparelho e ainda nao
+// confirmadas. Serve so para nao deixar vender duas vezes a mesma ultima caixa offline.
+function filaReservado(prodId){
+  return fila.filter(f=>f.tipo==='venda'&&f.status!=='confirmado'&&f.payload&&f.payload.p_venda&&f.payload.p_venda.prod===prodId)
+    .reduce((a,f)=>{const v=f.payload.p_venda,p=getProd(prodId);return a+(v.tipo==='caixa'?(+v.qtd||0)*fpcOf(p||{}):(+v.qtd||0));},0);
 }
 
 // Guarda uma copia dos dados no aparelho, para o app abrir sem internet
@@ -726,65 +1073,98 @@ function salvarCache(){
 }
 function temCache(){const c=lsGet(CACHE_KEY);return !!(c&&c.produtos);}
 
+// ---------- tela ----------
+const FILA_STATUS_TXT={pendente:'Guardado neste aparelho',enviando:'Sincronizando…',confirmado:'Confirmado pelo servidor',falhou:'Não enviado',conflito:'Conflito'};
+function filaEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function renderOffBar(){
   const el=document.getElementById('offBar');if(!el)return;
-  const n=fila.length, comErro=fila.filter(f=>f.erro).length;
-  if(!semRede&&!n){el.style.display='none';return;}
+  const abertos=filaAbertos(),atencao=filaAtencao().length,esperando=abertos.length-atencao;
+  const semArmazem=armazemFila.modo()==='nenhum';
+  if(!semRede&&!abertos.length&&!filaTrabalhando&&!semArmazem){el.style.display='none';return;}
   el.style.display='flex';
-  el.className='offbar '+(semRede?'off':'pend');
-  let txt='';
-  if(semRede)txt+='<strong>📴 Sem internet</strong> — voce pode continuar lancando; nada se perde.';
-  if(n)txt+=(semRede?' ':'')+`<strong>${n} lancamento(s) aguardando envio</strong>`+(comErro?` · <span style="color:var(--r)">${comErro} com erro</span>`:'');
-  el.innerHTML=txt+
-    (n?`<button class="btn-s" style="margin-left:auto;font-size:11px;padding:4px 9px" onclick="enviarFila(true)"><i class="ti ti-send"></i> Enviar agora</button>
-        <button class="btn-s" style="font-size:11px;padding:4px 9px" onclick="verFila()"><i class="ti ti-list"></i> Ver</button>`:'');
+  el.className='offbar '+(semRede||atencao?'off':'pend');
+  const partes=[];
+  if(semRede)partes.push('<strong>📴 Sem internet.</strong>');
+  if(semArmazem)partes.push('<strong>Este aparelho não está deixando o app guardar dados</strong> — sem internet, nada pode ser salvo.');
+  if(filaTrabalhando)partes.push('<strong>Sincronizando…</strong>');
+  else if(esperando)partes.push('<strong>'+esperando+' operação(ões) salvas neste aparelho.</strong> '+(authToken?'Serão enviadas quando a conexão voltar.':'Entre no app para enviar.'));
+  if(atencao)partes.push('<span style="color:var(--r);font-weight:600">'+atencao+' precisa(m) da sua atenção</span>');
+  if(!abertos.length&&semRede&&!semArmazem)partes.push('Vendas e compras feitas agora ficam guardadas neste aparelho.');
+  el.innerHTML=partes.join(' ')+
+    (abertos.length?`<button class="btn-s" style="margin-left:auto;font-size:11px;padding:4px 9px" onclick="abrirFila()"><i class="ti ti-list"></i> Ver</button>`:'');
 }
-function verFila(){
-  if(!fila.length){showToast('Nada pendente.');return;}
-  const txt=fila.map((f,i)=>{
-    let alvo=f.url.split('/rest/v1/')[1]||f.url; alvo=alvo.split('?')[0];
-    let resumo='';try{const b=JSON.parse(f.body||'{}');resumo=b.cliente?('cliente '+b.cliente):b.descricao?b.descricao:b.prod?('produto '+b.prod):'';}catch(e){}
-    return `${i+1}. ${f.method} ${alvo} ${resumo} (${f.quando})${f.erro?' — ERRO: '+f.erro:''}`;
-  }).join('\n');
-  alert('Lancamentos aguardando envio:\n\n'+txt+'\n\nEles sao enviados sozinhos quando a internet voltar.');
+function abrirFila(){
+  renderFilaModal();
+  document.getElementById('filaModal').style.display='flex';
+}
+function renderFilaModal(){
+  const el=document.getElementById('filaBody');if(!el)return;
+  const abertos=filaAbertos(),conf=filaOrdenar(fila.filter(f=>f.status==='confirmado')).reverse().slice(0,10);
+  const linha=f=>{
+    const def=FILA_TIPOS[f.tipo]||{rotulo:f.tipo};
+    const cor=f.status==='conflito'||f.status==='falhou'?'var(--r)':f.status==='confirmado'?'var(--g)':'var(--bl)';
+    const quando=f.criado_em?new Date(f.criado_em).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+    const podeTentar=f.status==='falhou'||f.status==='conflito'||f.status==='pendente';
+    const podeCancelar=f.status!=='enviando'&&f.status!=='confirmado';
+    return `<div class="fila-item" style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline"><strong style="font-size:13px">${filaEsc(def.rotulo)}</strong><span style="font-size:11px;font-weight:600;color:${cor}">${filaEsc(FILA_STATUS_TXT[f.status]||f.status)}</span></div>
+      <div style="font-size:12px;margin-top:3px;overflow-wrap:anywhere">${filaEsc(f.resumo||'')}</div>
+      <div style="font-size:11px;color:var(--sub);margin-top:3px">${filaEsc(quando)}${f.tentativas?' · '+f.tentativas+' tentativa(s)':''}${f.usuario?' · '+filaEsc(f.usuario):''}</div>
+      ${f.ultimo_erro?`<div style="font-size:12px;margin-top:6px;color:${f.status==='pendente'?'var(--sub)':'var(--r)'};overflow-wrap:anywhere">${filaEsc(f.ultimo_erro)}</div>`:''}
+      <details style="font-size:11px;color:var(--sub);margin-top:6px"><summary style="cursor:pointer">Detalhes</summary><div style="overflow-wrap:anywhere;margin-top:4px">Código da operação: ${filaEsc(f.op_id)}<br/>Guardado em: ${filaEsc(f.criado_em)}${f.ultima_tentativa_em?'<br/>Última tentativa: '+filaEsc(f.ultima_tentativa_em):''}${(f.depende_de||[]).length?'<br/>Depende de: '+filaEsc(f.depende_de.join(', ')):''}</div></details>
+      ${(podeTentar||podeCancelar)?`<div style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px;flex-wrap:wrap">${podeCancelar?`<button class="btn-s" style="font-size:11px;padding:5px 9px;color:var(--r)" onclick="cancelarIntencao('${filaEsc(f.id_local)}')"><i class="ti ti-x"></i> Cancelar esta operação</button>`:''}${podeTentar?`<button class="btn-s" style="font-size:11px;padding:5px 9px" onclick="tentarIntencao('${filaEsc(f.id_local)}')"><i class="ti ti-refresh"></i> Tentar de novo</button>`:''}</div>`:''}
+    </div>`;
+  };
+  el.innerHTML=(abertos.length?abertos.map(linha).join(''):'<p style="font-size:13px;color:var(--sub)">Nada guardado aguardando envio.</p>')+
+    (conf.length?`<details style="margin-top:10px"><summary style="font-size:12px;cursor:pointer;color:var(--sub)">Enviados recentemente (${conf.length})</summary><div style="margin-top:8px">${conf.map(linha).join('')}</div></details>`:'');
+}
+async function enviarAgoraFila(){
+  await processarFila(true);
+  renderFilaModal();
+}
+async function tentarIntencao(id){
+  const n=await armazemFila.atualizar(id,a=>(a.status==='falhou'||a.status==='conflito'||a.status==='pendente')?{...a,status:'pendente',proxima_tentativa_em:null,tentativas_servidor:0,atualizado_em:filaAgoraIso()}:null);
+  await filaRecarregar();renderFilaModal();
+  if(!n)return;
+  await processarFila(true);
+  renderFilaModal();
+}
+async function cancelarIntencao(id){
+  const f=fila.find(x=>x.id_local===id);if(!f||f.status==='enviando'||f.status==='confirmado')return;
+  const dependentes=fila.filter(x=>x.status!=='confirmado'&&(x.depende_de||[]).includes(id));
+  const talvezChegou=f.erro_tipo==='transitorio'&&f.tentativas>0;
+  const aviso='Cancelar esta operação guardada no aparelho?\n\n'+(FILA_TIPOS[f.tipo]||{rotulo:f.tipo}).rotulo+': '+(f.resumo||'')+
+    '\n\nEla será apagada deste aparelho e NÃO será enviada.'+
+    (talvezChegou?'\n\nATENÇÃO: uma tentativa anterior caiu no meio. Pode ser que o servidor já tenha recebido. Se não tiver certeza, toque em "Tentar de novo" antes — se já estiver registrada, o sistema reconhece sem duplicar.':'')+
+    (dependentes.length?'\n\n'+dependentes.length+' operação(ões) que dependem desta também serão canceladas.':'');
+  if(!confirm(aviso))return;
+  for(const d of dependentes){try{await armazemFila.apagar(d.id_local);}catch(e){}}
+  try{await armazemFila.apagar(id);}catch(e){showToast('Não consegui apagar do aparelho.','err');return;}
+  if(f.tipo==='cliente'&&f.payload)DB.clientes=DB.clientes.filter(c=>!(c.id===f.payload.id&&c._pendente));
+  await filaRecarregar();renderFilaModal();populateCliSelect();
+  showToast('Operação cancelada neste aparelho.','warn');
+  audit('FILA_OFFLINE','Operação guardada no aparelho cancelada pelo usuário: '+(FILA_TIPOS[f.tipo]||{rotulo:f.tipo}).rotulo+' — '+(f.resumo||'')+' — op '+f.op_id);
 }
 
-// Envia tudo o que ficou pendente, na ordem em que foi lancado
-let enviando=false;
-async function enviarFila(manual){
-  if(enviando||!fila.length)return;
-  if(!authToken){
-    if(manual)showToast('Faca login para enviar os lancamentos pendentes.','warn');
-    return;
-  }
-  enviando=true;
-  let ok=0;
-  while(fila.length){
-    const f=fila[0];
-    let r;
-    try{
-      r=await fetch(f.url,{method:f.method,headers:{...H,'Prefer':'return=representation'},body:f.body});
-    }catch(e){ semRede=true; break; }             // caiu de novo: para e mantem a fila
-    if(r.ok||r.status===409){ fila.shift(); ok++; salvarFila(); continue; }  // 409 = ja tinha sido enviado
-    if(r.status===401||r.status===403){
-      if(await renovarToken())continue;            // renova e tenta de novo
-      f.erro='sessao expirada — entre de novo';salvarFila();break;
-    }
-    let m='';try{const j=await r.json();m=j.message||'';}catch(e){}
-    f.erro='HTTP '+r.status+(m?': '+m:'');
-    salvarFila();
-    break;
-  }
-  enviando=false;renderOffBar();
-  if(ok){showToast(ok+' lancamento(s) enviado(s) para a nuvem!');await sincronizar();}
-  else if(manual&&fila.length&&fila[0].erro)showToast('Nao consegui enviar: '+fila[0].erro,'err');
+// Cliente cadastrado offline ainda nao existe no servidor: a carga do banco o apagaria da lista
+// e a venda guardada ficaria apontando para ninguem na tela.
+function filaClientesPendentes(){
+  if(!Array.isArray(DB.clientes))return;
+  fila.filter(f=>f.tipo==='cliente'&&f.status!=='confirmado'&&f.payload).forEach(f=>{
+    if(!DB.clientes.some(c=>c.id===f.payload.id))DB.clientes.push({...f.payload,_pendente:true});
+  });
 }
-function descartarFila(){
-  if(!fila.length)return;
-  if(!confirm('Descartar os '+fila.length+' lancamento(s) que ainda nao foram enviados?\n\nIsso NAO pode ser desfeito.'))return;
-  fila=[];salvarFila();showToast('Pendencias descartadas.','warn');
+function filaIniciar(){
+  // uma vez so por aba: duas migracoes simultaneas leriam a fila antiga duas vezes
+  if(!filaIniciar._p)filaIniciar._p=(async()=>{
+    try{await armazemFila.iniciar();await filaMigrarV1();}catch(e){}
+    await filaRecarregar();
+    filaClientesPendentes();
+    if(authToken&&filaAbertos().length)processarFila();
+  })();
+  return filaIniciar._p;
 }
-window.addEventListener('online',()=>{semRede=false;renderOffBar();enviarFila();});
+window.addEventListener('online',()=>{semRede=false;renderOffBar();processarFila();});
 window.addEventListener('offline',()=>{semRede=true;renderOffBar();});
 
 async function renovarToken(){
@@ -797,24 +1177,33 @@ async function renovarToken(){
   return false;
 }
 // Faz a chamada. Se a sessao expirou (401/403) renova o token e tenta de novo.
-// Se estiver sem internet, GUARDA a gravacao na fila em vez de perder o dado.
+// Sem internet (ou sem resposta dentro do prazo) LANCA um erro marcado com semRede.
+// Ela NAO finge sucesso: antes devolvia um 200 falso com o proprio corpo, e a venda offline
+// aparecia como "registrada" sem existir em lugar nenhum da tela. Quem sabe guardar a
+// operacao para depois e a propria operacao (venda, compra), pela fila de intencoes.
 async function sbFetch(url,opts,jaTentou){
   opts=opts||{};
   const metodo=(opts.method||'GET').toUpperCase();
-  let r;
+  let r,ctl=null,prazo=null,estourou=false;
+  if(typeof AbortController!=='undefined'&&!opts.signal){
+    ctl=new AbortController();opts={...opts,signal:ctl.signal};
+    prazo=setTimeout(()=>{estourou=true;try{ctl.abort();}catch(e){}},metodo==='GET'?SB_PRAZO_LEITURA_MS:SB_PRAZO_ESCRITA_MS);
+  }
   try{
     r=await fetch(url,opts);
     if(semRede){semRede=false;renderOffBar();}
   }catch(e){
     semRede=true;renderOffBar();
-    if(metodo==='GET')throw new Error('sem internet no momento');
-    enfileirar(url,opts);   // grava para enviar quando a rede voltar
-    const eco=metodo==='POST'?'['+(opts.body||'{}')+']':(opts.body?'['+opts.body+']':'[]');
-    return new Response(eco,{status:200,headers:{'Content-Type':'application/json'}});
+    const err=new Error(estourou?'a conexão demorou demais para responder':'sem internet no momento');
+    err.semRede=true;err.prazo=estourou;
+    throw err;
+  }finally{
+    if(prazo)clearTimeout(prazo);
   }
   if((r.status===401||r.status===403)&&!jaTentou&&refreshToken){
     if(await renovarToken()){
       const o={...opts,headers:{...opts.headers,'Authorization':H.Authorization}};
+      if(ctl)delete o.signal;   // a nova tentativa ganha prazo proprio
       return sbFetch(url,o,true);
     }
   }
@@ -990,7 +1379,7 @@ const TOUR=[
       <p class="obs">A diferen&ccedil;a mais importante: <strong>Lucro</strong> &eacute; o que cada venda deixa; <strong>Caixa</strong> &eacute; o dinheiro que sobrou de verdade. Os dois podem ir em dire&ccedil;&otilde;es diferentes num m&ecirc;s em que voc&ecirc; comprou muito estoque.</p>`},
   {ic:'ti-refresh',t:'6. Manter tudo atualizado',
    c:`<p>A <strong>setinha 🔄</strong> no topo puxa os dados da nuvem de novo. Use quando algu&eacute;m lan&ccedil;ou algo em outro aparelho.</p>
-      <p class="ex">Sem internet, o app continua funcionando: os lan&ccedil;amentos ficam numa fila e sobem sozinhos quando o sinal volta.</p>`},
+      <p class="ex">Sem internet, <strong>vendas e compras</strong> ficam guardadas neste aparelho e s&atilde;o enviadas sozinhas quando o sinal volta. S&oacute; contam como registradas quando o servidor confirmar &mdash; toque em <strong>Ver</strong> na barra do topo para acompanhar. O resto (cancelar, estornar, ajustar estoque, editar) precisa de internet.</p>`},
   {ic:'ti-shield-check',t:'7. Rotina que evita dor de cabe&ccedil;a',
    c:`<p>Uma vez por semana: abra o <strong>Resumo</strong> (bot&atilde;o no Dashboard) e mande no grupo. Uma vez por m&ecirc;s: gere o <strong>DRE</strong> em Relat&oacute;rios.</p>
       <p class="ex">O backup acontece sozinho toda semana. Se quiser conferir, est&aacute; em Config &rarr; Backup.</p>
@@ -1165,7 +1554,8 @@ async function loadAll(silencioso){
   ultCarga=getNow().display;
   if(!loadErros.length)salvarCache();
   atualizaSelo();
-  if(fila.length)enviarFila();
+  filaClientesPendentes();
+  if(filaAbertos().length)processarFila();
   if(loadErros.length)showToast('Atenção: '+loadErros[0],'err');
   if(!silencioso)hideLoading();
 }
@@ -1321,7 +1711,7 @@ async function doLogin(){
   setToday();populateCliSelect();populateProdSelects();populateFornecedores();updateVF();renderAll();resetTimer();atualizaSelo();
   audit('LOGIN',`${currentUser} entrou via ${getDevice()}`);
   hideLoading();
-  renderOffBar();enviarFila();backupAutomatico();tourSeNovo();
+  renderOffBar();processarFila();backupAutomatico();tourSeNovo();
 }
 // Abre o app sem internet, usando a ultima copia salva no aparelho
 function entrarOffline(){
@@ -1330,6 +1720,7 @@ function entrarOffline(){
   DB.produtos=c.produtos||[];DB.vendas=c.vendas||[];DB.clientes=c.clientes||[];
   DB.saidas=c.saidas||[];DB.reposicoes=c.reposicoes||[];DB.ledger=c.ledger||[];DB.config=c.config||{};DB.auditLog=[];
   loggedIn=true;currentUser=c.usuario||'Offline';semRede=true;
+  filaClientesPendentes();
   document.getElementById('ls').style.display='none';
   document.getElementById('app').style.display='flex';
   document.getElementById('uname').textContent=currentUser+' (offline)';
@@ -1337,7 +1728,7 @@ function entrarOffline(){
   ultCarga=c.quando||'';
   setToday();populateCliSelect();populateProdSelects();populateFornecedores();updateVF();
   renderAll();atualizaSelo();renderOffBar();resetTimer();
-  showToast('Modo offline — dados de '+(c.quando||'antes')+'. Tudo que voce lancar sera enviado quando a internet voltar.','warn');
+  showToast('Modo offline — dados de '+(c.quando||'antes')+'. Vendas e compras ficam guardadas neste aparelho e são enviadas quando a conexão voltar; o resto precisa de internet.','warn');
 }
 
 async function doLogout(){
@@ -1350,13 +1741,14 @@ function resetTimer(){clearTimeout(sessionTimer);sessionTimer=setTimeout(async()
 ['click','touchstart','scroll','keydown'].forEach(ev=>document.addEventListener(ev,()=>{if(loggedIn)resetTimer();},{passive:true}));
 document.getElementById('lp').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 // mostra o botao de modo offline se ja existir copia local
-carregarFila();
 registrarSW();
 (function(){
   const box=document.getElementById('offlineLogin');
   if(box&&temCache())box.style.display='block';
   if(navigator.onLine===false)semRede=true;
 })();
+filaIniciar();
+setInterval(()=>{if(authToken&&!filaTrabalhando&&filaAbertos().some(f=>f.status==='pendente'))processarFila();},60e3);
 
 // ============================================================
 // NAV
@@ -1584,9 +1976,28 @@ async function regVenda(){
   }
   const cuUnit=t==='caixa'?p.custoCaixa:p.custoFrasco;
   if(!cuUnit||cuUnit<=0){showToast('Cadastre o custo de '+p.nome+' antes de vender (Produtos → Editar).','err');return;}
-  if(t==='caixa'){if(p.caixas<q){showToast('Estoque insuficiente.','err');return;}}
-  else if(totFP(p)<q){showToast('Estoque insuficiente.','err');return;}
-  let ci=document.getElementById('vCliSel').value,cn='',cw='';
+  // Estoque "prometido" por vendas guardadas neste aparelho e ainda nao confirmadas conta como
+  // indisponivel: sem isso daria para vender offline a mesma ultima caixa duas vezes.
+  const reservado=filaReservado(p.id),dispFr=totFP(p)-reservado,pedeFr=t==='caixa'?q*fpcOf(p):q;
+  if(t==='caixa'?(p.caixas<q||dispFr<pedeFr):dispFr<pedeFr){
+    showToast(reservado?'Estoque insuficiente — já há venda(s) guardada(s) neste aparelho aguardando envio para este produto.':'Estoque insuficiente.','err');return;
+  }
+  if(regVenda._emAndamento){showToast('Já estou salvando esta venda — aguarde.','warn');return;}
+  regVenda._emAndamento=true;
+  try{await regVendaSalvar(p,t,q,vo,dc,vf,dt,obs,pg,pa,tx,tq);}
+  finally{regVenda._emAndamento=false;hideLoading();}
+}
+// So pula a tentativa direta quando o proprio aparelho diz que esta sem rede. O `semRede` do app
+// fica ligado ate a proxima chamada dar certo — usa-lo aqui mandaria para a fila uma venda que
+// poderia ter sido confirmada na hora. Se a tentativa direta cair, ela vai para a fila do mesmo jeito.
+function semConexaoAgora(){return typeof navigator!=='undefined'&&navigator.onLine===false;}
+async function regVendaSalvar(p,t,q,vo,dc,vf,dt,obs,pg,pa,tx,tq){
+  // O mesmo op_id vale para esta venda inteira. Se a rede cair e o usuário repetir, ou se o
+  // botão for clicado duas vezes, o banco devolve a venda que já existe em vez de criar outra —
+  // e a fila do aparelho reconhece a mesma intenção em vez de guardar outra.
+  if(!regVenda._op)regVenda._op=novoOpId();
+  const opId=regVenda._op;
+  let ci=document.getElementById('vCliSel').value,cn='',cw='',clienteGuardado=null;
   if(!ci){cn=document.getElementById('vCliNome').value.trim();cw=document.getElementById('vCliWpp').value.trim();if(!cn||!cw){showToast('Informe nome e WhatsApp.','err');return;}
     // Telefone repetido NÃO prova que é a mesma pessoa — o banco de produção tem dois
     // clientes reais com o mesmo número e nomes diferentes. Por isso aqui pergunta,
@@ -1597,44 +2008,75 @@ async function regVenda(){
       ci=jaTem.id;cn=jaTem.nome;cw=jaTem.tel;
     }
     if(!ci){
-      showLoading('Cadastrando cliente...');
-      try{const nc=await sbPost('clientes',{id:Date.now(),nome:cn,tel:cw,obs:''});if(Array.isArray(nc)&&nc[0]){DB.clientes.push(nc[0]);ci=nc[0].id;}else{ci=Date.now();DB.clientes.push({id:ci,nome:cn,tel:cw,obs:''});}}
-      catch(e){hideLoading();showToast('Não consegui cadastrar o cliente. A venda NÃO foi lançada — confira a internet e tente de novo.','err');return;}
-      populateCliSelect();hideLoading();
+      const novoCli={id:Date.now(),nome:cn,tel:cw,obs:''};
+      let offline=semConexaoAgora();
+      if(!offline){
+        showLoading('Cadastrando cliente...');
+        try{const nc=await sbPost('clientes',novoCli);if(Array.isArray(nc)&&nc[0]){DB.clientes.push(nc[0]);ci=nc[0].id;}else{showToast('O servidor não devolveu o cliente cadastrado. A venda NÃO foi lançada — tente de novo.','err');return;}}
+        catch(e){
+          if(!e.semRede){showToast('Não consegui cadastrar o cliente: '+(e.message||e)+'. A venda NÃO foi lançada.','err');return;}
+          offline=true;
+        }
+        hideLoading();
+      }
+      if(offline){
+        // o cadastro vira uma intencao propria; a venda depende dela (vendas.cli_id tem FK)
+        clienteGuardado=await filaGuardar('cliente','cliente-'+novoCli.id,novoCli,{resumo:cn+' · '+cw});
+        if(!clienteGuardado){showToast('Sem internet e este aparelho não conseguiu guardar a operação. A venda NÃO foi registrada — anote e lance quando a conexão voltar.','err');return;}
+        DB.clientes.push({...novoCli,_pendente:true});ci=novoCli.id;
+      }
+      populateCliSelect();
     }
   }else{const c=DB.clientes.find(x=>x.id==ci);if(c){cn=c.nome;cw=c.tel;}}
   const b=q*vf,c=cuProd(p,t,q),tv=b*(tx/100),l=tq==='nos'?b-tv:b,ll=pg==='fiado'?0:l-c,mg=pg==='fiado'?0:margemPct(b,ll);
   const id=Date.now();
   const row={id,prod:p.id,tipo:t,qtd:q,val_orig:vo,desconto:dc,val_final:vf,bruto:b,custo:c,taxa:tx,taxa_val:tv,taxa_quem:tq,liq:l,lucro_liq:ll,margem:mg,cliente:cn,wpp:cw,cli_id:ci,data:dt,obs,pgto:pg,parcelas:pa,quitado:false,cancelada:false,vence_em:(pg==='fiado'?((document.getElementById('vVence')||{}).value||addDias(dt,15)):null),usuario:currentUser,lote:(document.getElementById('vLote')?document.getElementById('vLote').value.trim():'')};
-  // O mesmo op_id vale para esta venda inteira. Se a rede cair e o usuário repetir, ou se o
-  // botão for clicado duas vezes, o banco devolve a venda que já existe em vez de criar outra.
-  if(!regVenda._op)regVenda._op=novoOpId();
-  const opId=regVenda._op;
-  if(regVenda._emAndamento){showToast('Já estou salvando esta venda — aguarde.','warn');return;}
-  regVenda._emAndamento=true;
-  showLoading('Salvando venda...');
-  let res;
-  try{
-    // Uma chamada só: grava a venda, baixa o estoque com trava e escreve a auditoria,
-    // tudo na mesma transação. O estoque local NÃO é mexido antes — quem manda é o banco.
-    res=await sbRpc('vsp_registrar_venda',{p_venda:row,p_op_id:opId});
-  }catch(e){
-    regVenda._emAndamento=false;hideLoading();
-    showToast('Não consegui salvar: '+(e.message||e)+'. Nada foi gravado pela metade — pode tentar de novo.','err');
-    try{await sincronizar();}catch(e2){}
-    return;
+  let res=null,guardada=null;
+  if(clienteGuardado||semConexaoAgora()){
+    guardada=await regVendaGuardar(row,opId,clienteGuardado);
+    if(!guardada)return;
+  }else{
+    showLoading('Salvando venda...');
+    try{
+      // Uma chamada só: grava a venda, baixa o estoque com trava e escreve a auditoria,
+      // tudo na mesma transação. O estoque local NÃO é mexido antes — quem manda é o banco.
+      res=await sbRpc('vsp_registrar_venda',{p_venda:row,p_op_id:opId});
+    }catch(e){
+      hideLoading();
+      if(e.semRede){
+        // Caiu a rede ou estourou o prazo. Pode ser que o servidor tenha gravado: a intencao
+        // guardada leva o MESMO op_id, e o reenvio cai na idempotencia em vez de duplicar.
+        guardada=await regVendaGuardar(row,opId,null);
+        if(!guardada)return;
+      }else{
+        showToast('Não consegui salvar: '+(e.message||e)+'. Nada foi gravado pela metade — pode tentar de novo.','err');
+        try{await sincronizar();}catch(e2){}
+        return;
+      }
+    }
   }
-  regVenda._emAndamento=false;regVenda._op=null;
-  // estado canônico devolvido pelo banco
+  regVenda._op=null;
   if(res&&res.produto){const pr=mapProd(res.produto);const alvo=getProd(pr.id);if(alvo)Object.assign(alvo,pr);}
   if(res&&res.venda){
     const jaTinha=DB.vendas.some(v=>v.id===res.venda.id);
     if(!jaTinha)DB.vendas.push(mapVenda(res.venda));
   }
   hideLoading();
-  showToast(res&&res.repetida?'Esta venda já estava salva — não lancei de novo.':(pg==='fiado'?'Venda fiado registrada!':'Venda registrada!'));
+  if(guardada)showToast('Salvo neste aparelho. Será enviado quando a conexão voltar.','warn');
+  else showToast(res&&res.repetida?'Esta venda já estava salva — não lancei de novo.':(pg==='fiado'?'Venda fiado registrada!':'Venda registrada!'));
   document.getElementById('vCliSel').value='';document.getElementById('vCliNome').value='';document.getElementById('vCliWpp').value='';document.getElementById('newCliBox').style.display='block';document.getElementById('vObs').value='';document.getElementById('vQtd').value='1';document.getElementById('vValOrig').value='';document.getElementById('vDesc').value='0';document.getElementById('vTaxa').value='0';document.getElementById('vPgto').value='pix';document.getElementById('fiadoInfo').style.display='none';
   calcT();setToday();updateVF();renderAll();
+  if(guardada)processarFila();
+}
+// Guarda a venda como intencao. So devolve o registro se o aparelho gravou e releu.
+async function regVendaGuardar(row,opId,clienteGuardado){
+  const it=await filaGuardar('venda',opId,{p_venda:row},{resumo:filaResumoVenda(row),depende_de:clienteGuardado?[clienteGuardado.id_local]:[]});
+  if(!it){
+    if(clienteGuardado){try{await armazemFila.apagar(clienteGuardado.id_local);}catch(e){}DB.clientes=DB.clientes.filter(c=>c.id!==clienteGuardado.payload.id);await filaRecarregar();populateCliSelect();}
+    showToast('Sem internet e este aparelho não conseguiu guardar a venda. Ela NÃO foi registrada — anote e lance quando a conexão voltar.','err');
+    return null;
+  }
+  return it;
 }
 
 // ============================================================
@@ -2483,7 +2925,6 @@ async function confReposicao(){
   // Aviso de possível duplicidade (mesma compra lançada 2x)
   const jaExiste=DB.reposicoes.some(r=>r.prod===p.id&&r.tipo===t&&+r.qtd===q&&Math.abs((+r.custTotal||0)-q*cu)<1&&r.data===data);
   if(jaExiste&&!confirm('Já existe uma compra idêntica deste produto nesta mesma data.\n\nLançar mesmo assim?'))return;
-  showLoading('Salvando compra...');
   // O custo médio ponderado é calculado NO BANCO, dentro da transação da compra, com a mesma
   // fórmula que estava aqui. O app não mexe mais em estoque nem em custo por conta própria.
   const frete=valNum('repFrete')||0;
@@ -2497,19 +2938,39 @@ async function confReposicao(){
   const opId=confReposicao._op;
   if(confReposicao._emAndamento){showToast('Já estou salvando esta compra — aguarde.','warn');return;}
   confReposicao._emAndamento=true;
-  let res;
-  try{
-    // A compra NÃO lança saída no Financeiro: quem banca a mercadoria é o Victor, então ela
-    // vira dívida da empresa com ele (aparece em Financeiro → Fornecedores). O reembolso é
-    // lançado à mão como "Pagamento fornecedor" quando acontece.
-    res=await sbRpc('vsp_registrar_compra',{p_rep:row,p_op_id:opId});
-  }catch(e){
+  showLoading('Salvando compra...');
+  let res=null,guardada=null;
+  // A compra NÃO lança saída no Financeiro: quem banca a mercadoria é o Victor, então ela
+  // vira dívida da empresa com ele (aparece em Financeiro → Fornecedores). O reembolso é
+  // lançado à mão como "Pagamento fornecedor" quando acontece.
+  if(semConexaoAgora()){
+    guardada=await filaGuardar('compra',opId,{p_rep:row},{resumo:filaResumoCompra(row)});
+  }else{
+    try{
+      res=await sbRpc('vsp_registrar_compra',{p_rep:row,p_op_id:opId});
+    }catch(e){
+      if(!e.semRede){
+        confReposicao._emAndamento=false;hideLoading();
+        showToast('Não consegui salvar a compra: '+(e.message||e)+'. Nada foi gravado pela metade.','err');
+        try{await sincronizar();}catch(e2){}
+        return;
+      }
+      // sem rede ou sem resposta: guarda com o MESMO op_id (se o servidor gravou, o reenvio não duplica)
+      guardada=await filaGuardar('compra',opId,{p_rep:row},{resumo:filaResumoCompra(row)});
+    }
+  }
+  if(!res&&!guardada){
     confReposicao._emAndamento=false;hideLoading();
-    showToast('Não consegui salvar a compra: '+(e.message||e)+'. Nada foi gravado pela metade.','err');
-    try{await sincronizar();}catch(e2){}
+    showToast('Sem internet e este aparelho não conseguiu guardar a compra. Ela NÃO foi registrada — anote e lance quando a conexão voltar.','err');
     return;
   }
   confReposicao._emAndamento=false;confReposicao._op=null;
+  if(guardada){
+    hideLoading();closeModal('repModal');['repCustUnit','repForn','repObs','repLote','repValidade','repNota','repFrete'].forEach(i=>{const e=document.getElementById(i);if(e)e.value='';});
+    showToast('Salvo neste aparelho. Será enviado quando a conexão voltar.','warn');
+    processarFila();
+    return;
+  }
   if(res&&res.compra&&!DB.reposicoes.some(x=>x.id===res.compra.id))DB.reposicoes.push(mapRep(res.compra));
   // adota o movimento do razao que a mesma transacao criou, senao o card do Financeiro e o
   // do Dashboard ficam parados no saldo antigo ate a proxima sincronizacao

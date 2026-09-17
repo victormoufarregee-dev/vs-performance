@@ -263,10 +263,16 @@ function criarEstufa(opts) {
     readyState: 'complete',
   };
 
-  const guardaLS = new Map();
+  // opts.guardaLS: um Map compartilhado entre DUAS cargas simula a mesma origem do navegador
+  // (recarregar a pagina, fechar e abrir, duas abas). opts.lsQuebrado: setItem lanca, como em
+  // modo privado ou armazenamento cheio.
+  const guardaLS = opts.guardaLS || new Map();
   const localStorage = {
     getItem: (k) => (guardaLS.has(String(k)) ? guardaLS.get(String(k)) : null),
-    setItem: (k, v) => { guardaLS.set(String(k), String(v)); },
+    setItem: (k, v) => {
+      if (opts.lsQuebrado) throw new Error('QuotaExceededError (harness)');
+      guardaLS.set(String(k), String(v));
+    },
     removeItem: (k) => { guardaLS.delete(String(k)); },
     clear: () => guardaLS.clear(),
     key: (i) => [...guardaLS.keys()][i] ?? null,
@@ -390,6 +396,9 @@ function criarEstufa(opts) {
   const sandbox = {
     document: documento,
     localStorage,
+    // sem IndexedDB por padrao (o app cai no localStorage); os testes da fila passam
+    // opts.indexedDB = criarIndexedDB() para exercitar o caminho que o navegador usa
+    indexedDB: opts.indexedDB,
     sessionStorage: localStorage,
     navigator: {
       userAgent: 'Harness/Node ' + process.version + ' (Windows)',
@@ -675,7 +684,118 @@ function carregar(opts) {
   return h;
 }
 
+// ------------------------------------------------------------ IndexedDB ----
+/**
+ * IndexedDB falso, em memoria, com o SUBCONJUNTO que a fila offline usa: open com
+ * onupgradeneeded, createObjectStore(keyPath), transaction readonly/readwrite,
+ * get/getAll/put/delete, oncomplete/onerror/onabort.
+ *
+ * O que ele garante, porque e o que a fila depende do navegador garantir:
+ *   - ATOMICIDADE: a transacao trabalha numa copia e so publica no fim; se algo lanca
+ *     no meio, aborta e nada do que ela escreveu fica;
+ *   - SERIALIZACAO: uma transacao por vez (o navegador serializa readwrite no mesmo
+ *     store, inclusive entre abas). E isso que torna a troca de status atomica;
+ *   - ASSINCRONIA: tudo responde depois (setImmediate real do Node), nunca na hora.
+ *
+ * O mesmo objeto passado a duas cargas do harness = duas abas / um reload na mesma
+ * origem. `falharProximaEscrita(erro)` simula armazenamento cheio na proxima gravacao.
+ */
+function criarIndexedDB() {
+  const bancos = new Map();
+  let corrente = Promise.resolve();
+  const controle = { proximaEscrita: null, escritas: 0 };
+  const clonar = (v) => (v === undefined ? undefined : structuredClone(v));
+  const pedido = () => ({ result: undefined, error: null, onsuccess: null, onerror: null });
+
+  function transacao(st, modo) {
+    const t = { oncomplete: null, onerror: null, onabort: null, error: null };
+    const pendentes = [];
+    let abortada = false;
+    let trabalho = null;
+    t.abort = () => { abortada = true; };
+    t.objectStore = () => ({
+      get(k) {
+        const r = pedido();
+        pendentes.push(() => { r.result = clonar(trabalho.get(k)); if (r.onsuccess) r.onsuccess({ target: r }); });
+        return r;
+      },
+      getAll() {
+        const r = pedido();
+        pendentes.push(() => { r.result = [...trabalho.values()].map(clonar); if (r.onsuccess) r.onsuccess({ target: r }); });
+        return r;
+      },
+      put(v) {
+        if (modo !== 'readwrite') throw new Error('ReadOnlyError');
+        const r = pedido();
+        pendentes.push(() => {
+          if (controle.proximaEscrita) { const e = controle.proximaEscrita; controle.proximaEscrita = null; throw e; }
+          controle.escritas++;
+          trabalho.set(v[st.keyPath], clonar(v));
+          r.result = v[st.keyPath];
+          if (r.onsuccess) r.onsuccess({ target: r });
+        });
+        return r;
+      },
+      delete(k) {
+        if (modo !== 'readwrite') throw new Error('ReadOnlyError');
+        const r = pedido();
+        pendentes.push(() => { trabalho.delete(k); if (r.onsuccess) r.onsuccess({ target: r }); });
+        return r;
+      },
+    });
+    corrente = corrente.then(() => new Promise((fim) => {
+      setImmediate(() => {
+        trabalho = new Map(st.dados);
+        try {
+          while (pendentes.length && !abortada) pendentes.shift()();
+        } catch (e) { abortada = true; t.error = e; }
+        if (abortada) { if (t.onabort) t.onabort({ target: t }); fim(); return; }
+        if (modo === 'readwrite') st.dados = trabalho;
+        if (t.oncomplete) t.oncomplete({ target: t });
+        fim();
+      });
+    }));
+    return t;
+  }
+
+  return {
+    open(nome, versao) {
+      const r = pedido();
+      r.onupgradeneeded = null;
+      r.onblocked = null;
+      setImmediate(() => {
+        let b = bancos.get(nome);
+        if (!b) { b = { versao: 0, stores: new Map() }; bancos.set(nome, b); }
+        r.result = {
+          objectStoreNames: { contains: (n) => b.stores.has(n) },
+          createObjectStore(n, o) { b.stores.set(n, { keyPath: o.keyPath, dados: new Map() }); },
+          transaction(n, modo) {
+            const st = b.stores.get(n);
+            if (!st) throw new Error('NotFoundError: ' + n);
+            return transacao(st, modo || 'readonly');
+          },
+        };
+        if ((versao || 1) > b.versao) {
+          b.versao = versao || 1;
+          if (r.onupgradeneeded) r.onupgradeneeded({ target: r });
+        }
+        if (r.onsuccess) r.onsuccess({ target: r });
+      });
+      return r;
+    },
+    /** registros guardados num store, em copia (para o teste inspecionar) */
+    registros(nome, store) {
+      const b = bancos.get(nome);
+      const st = b && b.stores.get(store);
+      return st ? [...st.dados.values()].map(clonar) : [];
+    },
+    falharProximaEscrita(erro) { controle.proximaEscrita = erro || new Error('QuotaExceededError (harness)'); },
+    controle,
+  };
+}
+
 module.exports = {
+  criarIndexedDB,
   carregar,
   resolverIndex,
   resolverMigrations,

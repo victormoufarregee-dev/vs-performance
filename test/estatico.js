@@ -89,4 +89,18 @@ console.log(identidadeOk
   : 'IDENTIDADE DO RAZAO VOLTOU AO PAYLOAD: vsp_ator() usado ' + usosAtor + 'x' +
     (confiaNoPayload.length ? '; payload confiado em ' + confiaNoPayload.join(', ') : ''));
 
-process.exit(erros || !identidadeOk || ausentes.length || achados.length || semId.length || voltou.length || faltam.length || legadoVoltou.length || semLedger.length ? 1 : 0);
+// 9) fila offline: sem sucesso inventado, persistida de verdade, op_id do registro.
+//    Antes de 17/09/2026 o sbFetch devolvia um `new Response(eco,{status:200})` com o
+//    proprio corpo quando a rede caia: a venda offline aparecia como "Venda registrada!"
+//    e a fila era um array inteiro no localStorage, regravado por cada aba.
+const filaProibido = ['new Response(eco', 'enfileirar(', 'lsSet(FILA_KEY'];
+const filaObrigatorio = ['indexedDB.open(', 'p_op_id:item.op_id', "status:'enviando'", 'filaGuardar('];
+const filaVoltou = filaProibido.filter(t => h.includes(t));
+const filaFalta = filaObrigatorio.filter(t => !h.includes(t));
+const filaOk = !filaVoltou.length && !filaFalta.length;
+console.log(filaOk
+  ? 'FILA OFFLINE: ok, intencoes em IndexedDB, op_id do registro, sem 200 inventado'
+  : 'FILA OFFLINE QUEBRADA:' + (filaVoltou.length ? ' voltou ' + filaVoltou.join(', ') : '') +
+    (filaFalta.length ? ' falta ' + filaFalta.join(', ') : ''));
+
+process.exit(erros || !filaOk || !identidadeOk || ausentes.length || achados.length || semId.length || voltou.length || faltam.length || legadoVoltou.length || semLedger.length ? 1 : 0);

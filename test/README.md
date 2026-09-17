@@ -281,6 +281,32 @@ O caso ponta-a-ponta (digitar `582,50` no campo de custo e o valor sair **inteir
 payload** da `vsp_registrar_compra`) está em `operacoes.test.js`. A prova acima é de
 linguagem e vale para sempre; a do app depende de o `numBR()` continuar no lugar.
 
+### `fila.test.js` — a fila offline persistente (42 casos)
+
+Roda o JavaScript real do `index.html` sobre um **IndexedDB em memória**
+(`H.criarIndexedDB()`), que garante o que o navegador garante e a fila depende: transação
+atômica (trabalha numa cópia e publica no fim), serializada (uma por vez — é o que torna a
+troca de status atômica) e assíncrona (`setImmediate` real). O **mesmo** objeto passado a
+duas cargas do harness (`H.carregar({ indexedDB, guardaLS })`) é uma segunda aba ou um
+reload na mesma origem. `falharProximaEscrita()` simula armazenamento cheio; `lsQuebrado`
+faz o `localStorage` lançar.
+
+O servidor é um `fetch` falso por caso (`servidor(h, fn)`), que responde `{status, corpo}`,
+`'rede'` (lança como sem internet) ou `'pendurar'` (só termina quando o `AbortController`
+do prazo abortar — o teste dispara o timer de 20 s à mão, porque os timers do harness não
+agendam nada).
+
+Prova: gravar e reler **antes** de dizer "Salvo neste aparelho"; nunca "Venda registrada"
+nem "sincronizado" antes do 200; sobreviver a reload e a fechar/abrir; op_id idêntico em
+todas as tentativas; clique duplo; `repetida:true`; conflito de estoque sem trava de cabeça
+e sem retry; 401/403 e payload inválido sem retry; espera entre tentativas; prazo; offline
+prolongado; dois trabalhadores; órfão; dependência cliente → venda; intenção de outra
+pessoa; migração da `vsp_fila_v1`; limpeza de confirmados; compra offline; o que **não** vai
+para a fila. Detalhe e evidência do navegador real em `OFFLINE_FILA.md`.
+
+Não prova: o IndexedDB de cada navegador (Safari/iOS fica para o smoke do Victor,
+`SMOKE_OFFLINE.md`) nem a RPC por dentro.
+
 ### `estatico.test.js` — o texto do arquivo (26 casos)
 
 Não executa nada (fora o parse). Pega justamente o que o harness **não** pega:
@@ -321,11 +347,14 @@ Não executa nada (fora o parse). Pega justamente o que o harness **não** pega:
   do Supabase no arquivo é a **anon** (o teste decodifica o JWT e confere `role`) —
   nunca a `service_role`.
 
-`test/estatico.js` é o mesmo espírito **fora do runner**: 9 checagens que imprimem uma
-linha cada e saem com código 1 na primeira reprovação. As duas últimas nasceram com o
+`test/estatico.js` é o mesmo espírito **fora do runner**: 10 checagens que imprimem uma
+linha cada e saem com código 1 na primeira reprovação. Duas nasceram com o
 razão — a **fórmula legada** (`custoTot+valorEstTotal()`, `mercadoriaFornecida`,
 `faltaPagar`, `filter(s=>s.tipo==='fornecedor').reduce`) não pode voltar ao `index.html`,
-e a **identidade do razão** não pode voltar ao payload. Tanto ele quanto o
+e a **identidade do razão** não pode voltar ao payload. A última nasceu com a fila offline:
+`FILA OFFLINE` reprova se o 200 inventado (`new Response(eco`) ou a fila de array inteiro
+(`enfileirar(`, `lsSet(FILA_KEY`) voltarem, ou se `indexedDB.open(`, `p_op_id:item.op_id`,
+a troca para `enviando` ou `filaGuardar(` sumirem. Tanto ele quanto o
 `estatico.test.js` honram `VSP_INDEX` e `VSP_MIGRATIONS`, que é como o `test/mutantes.js`
 roda essas mesmas travas contra uma cópia mutada sem tocar nos arquivos reais.
 
@@ -348,8 +377,8 @@ Se o trecho a mutar não casar exatamente o número de vezes esperado, o script 
 "morto": ele diz `NAO APLICADO` e manda reescrever a mutação. Um mutante que nunca chegou
 a ser aplicado não prova nada.
 
-Resultado de 16/09/2026 — **8 mutantes, 8 mortos, 0 sobreviventes** (controle: 185 casos
-verdes):
+Resultado de 17/09/2026 — **15 mutantes, 15 mortos, 0 sobreviventes** (controle: 228 casos
+verdes). Os oito primeiros são do razão (16/09); os sete `OF-M*` são da fila offline:
 
 | mutante | arquivo mutado | o que muda | quem matou | resultado |
 |---|---|---|---|---|
@@ -361,6 +390,13 @@ verdes):
 | **M4** | `index.html` | `saldoVictor()` volta a somar o valor do estoque — quebra, perda e sobra de inventário voltariam a mexer na dívida com o sócio | `ledger.test.js` › "saldoVictor() = R$ 5.758,30…" (+27 casos) | **morto** |
 | **M5** | `index.html` | o card do Dashboard para de ler o razão e volta a derivar a dívida de `CMV + estoque − pago` | `ledger.test.js` › "os dois cards (Financeiro e Dashboard) também ignoram o estoque" **e** `estatico.js` › `FORMULA LEGADA VOLTOU` | **morto** |
 | **M6** | `migrations/006_ledger_victor.sql` | as funções do razão param de resolver o autor por `vsp_ator()` e passam a gravar o nome que o cliente mandar — a impersonação corrigida em 15/09 volta, agora no razão financeiro | `estatico.test.js` › "quem escreve no razão é a SESSÃO, nunca o nome vindo no payload" **e** `estatico.js` › `IDENTIDADE DO RAZAO VOLTOU AO PAYLOAD` | **morto** |
+| **OF-M1** | `index.html` | fila só em memória: `filaGuardar` diz que guardou sem gravar no IndexedDB | `fila.test.js` › "offline: grava a intenção no IndexedDB ANTES de dizer…" (+33 casos) | **morto** |
+| **OF-M2** | `index.html` | a partir da 2ª tentativa o envio inventa op_id novo | `fila.test.js` › "o op_id é o MESMO em todas as tentativas" **e** `estatico.js` › `FILA OFFLINE QUEBRADA` | **morto** |
+| **OF-M3** | `index.html` | o trabalhador apaga a intenção assim que começa a enviar | `fila.test.js` › "reconexão: envia, só confirma com 200…" (+18 casos) | **morto** |
+| **OF-M4** | `index.html` | "Estoque insuficiente" classificado como sucesso | `fila.test.js` › "estoque acabou enquanto estava offline: conflito…" (+3 casos) | **morto** |
+| **OF-M5** | `index.html` | a troca para `enviando` não confere se a intenção está livre: duas abas enviam a mesma | `fila.test.js` › "duas abas processando ao mesmo tempo enviam cada intenção UMA vez" | **morto** |
+| **OF-M6** | `index.html` | 401/403 viram transitório: retry infinito | `fila.test.js` › "401/403 (sessão sem permissão): falhou, sem retry infinito" | **morto** |
+| **OF-M7** | `index.html` | o painel chama a intenção pendente de "Sincronizado" | `fila.test.js` › "pendente: barra e painel dizem guardado, nunca confirmado/sincronizado" | **morto** |
 
 Dois detalhes que valem registro:
 

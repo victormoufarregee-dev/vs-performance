@@ -8,7 +8,7 @@
    antiga — que era o problema que a gente tinha.
    ============================================================ */
 
-const VERSAO = 'vsp-v3.0';
+const VERSAO = 'vsp-v3.1';
 const SHELL  = ['./', './index.html', './manifest.json', './icon.svg'];
 
 // ---------- instalação: guarda o essencial ----------

@@ -173,6 +173,86 @@ const MUTANTES = [
       ],
     ],
   },
+
+  // ---------------------------------------------------------------------------
+  // FILA OFFLINE (17/09/2026). Cada um e um jeito realista de a fila "funcionar" na
+  // demonstracao e perder ou duplicar venda na vida real.
+  // ---------------------------------------------------------------------------
+  {
+    id: 'OF-M1',
+    titulo: 'fila so em memoria',
+    oQueMuda:
+      'filaGuardar poe a intencao no array da tela e diz que guardou, sem gravar no ' +
+      'IndexedDB — recarregar a pagina apaga a venda offline',
+    arquivo: 'index.html',
+    trocas: [['    const ok=await armazemFila.gravar(item);', '    fila.push(item);renderOffBar();return item;', 1]],
+  },
+  {
+    id: 'OF-M2',
+    titulo: 'retry gera op_id novo',
+    oQueMuda:
+      'a partir da segunda tentativa o envio inventa um op_id novo — se a primeira ' +
+      'chegou ao banco e a resposta se perdeu, a venda entra duas vezes',
+    arquivo: 'index.html',
+    trocas: [[
+      'const params=Object.assign({},item.payload,{p_op_id:item.op_id});',
+      'const params=Object.assign({},item.payload,{p_op_id:(item.tentativas>1?novoOpId():item.op_id)});',
+      1,
+    ]],
+  },
+  {
+    id: 'OF-M3',
+    titulo: 'remove a intencao antes da confirmacao',
+    oQueMuda:
+      'o trabalhador apaga a intencao do aparelho assim que comeca a enviar — se a ' +
+      'rede cai no meio, a venda some',
+    arquivo: 'index.html',
+    trocas: [['        if(!pego)continue;', '        if(!pego)continue;await armazemFila.apagar(pego.id_local);', 1]],
+  },
+  {
+    id: 'OF-M4',
+    titulo: 'estoque insuficiente tratado como sucesso',
+    oQueMuda:
+      'a recusa "Estoque insuficiente" do servidor e classificada como ok: a venda ' +
+      'que nao entrou aparece como confirmada',
+    arquivo: 'index.html',
+    trocas: [[
+      "  if(/estoque insuficiente|estoque mudou/i.test(msg))return 'conflito';",
+      "  if(/estoque insuficiente|estoque mudou/i.test(msg))return 'ok';",
+      1,
+    ]],
+  },
+  {
+    id: 'OF-M5',
+    titulo: 'dois trabalhadores enviam a mesma intencao',
+    oQueMuda:
+      'a troca para "enviando" deixa de conferir se a intencao ainda esta livre — duas ' +
+      'abas pegam e enviam a mesma venda',
+    arquivo: 'index.html',
+    trocas: [["          if(!(a.status==='pendente'||filaOrfao(a,Date.now())))return null;", '          /* sem conferir */', 1]],
+  },
+  {
+    id: 'OF-M6',
+    titulo: '403 com retry infinito',
+    oQueMuda:
+      '401/403 passam a ser "transitorio": a fila repete para sempre uma chamada que ' +
+      'o servidor nunca vai aceitar',
+    arquivo: 'index.html',
+    trocas: [[
+      "  if(status===408||status===425||status===429||status>=500)return 'transitorio';",
+      "  if(status===401||status===403||status===408||status===425||status===429||status>=500)return 'transitorio';",
+      1,
+    ]],
+  },
+  {
+    id: 'OF-M7',
+    titulo: 'tela mostra sincronizado enquanto pendente',
+    oQueMuda:
+      'o painel chama de "Sincronizado" a venda que so esta guardada no aparelho — o ' +
+      'usuario acha que foi e fecha o app sem internet',
+    arquivo: 'index.html',
+    trocas: [["pendente:'Guardado neste aparelho'", "pendente:'Sincronizado'", 1]],
+  },
 ];
 
 // =============================================================================
@@ -257,7 +337,7 @@ function casosQueFalharam(saida) {
   while ((m = re.exec(trecho)) !== null) {
     casos.push({ suite: m[1], caso: m[2], arquivo: mapa[m[1]] || '?' });
   }
-  const peso = (x) => (x.arquivo === 'ledger.test.js' ? 0
+  const peso = (x) => (x.arquivo === 'ledger.test.js' || x.arquivo === 'fila.test.js' ? 0
     : x.arquivo === 'estatico.test.js' ? 1 : 2);
   return casos.map((x, k) => ({ x, k }))
     .sort((a, b) => (peso(a.x) - peso(b.x)) || (a.k - b.k))
@@ -274,6 +354,7 @@ const SINAIS_ESTATICO = [
   /^FORMULA LEGADA VOLTOU.*$/m,
   /^CONSUMIDOR NAO MIGRADO.*$/m,
   /^IDENTIDADE DO RAZAO VOLTOU.*$/m,
+  /^FILA OFFLINE QUEBRADA.*$/m,
 ];
 
 function sinaisEstatico(saida) {
