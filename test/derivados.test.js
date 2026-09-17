@@ -205,3 +205,34 @@ describe('Cliente — inativação em vez de DELETE que a RLS engole', () => {
     assertEqual(h.escopo.DB.clientes.find((x) => x.id === 5004).ativo, true, 'ativo de novo');
   });
 });
+
+// =============================================================================
+describe('Exportação operacional — o arquivo diz o que é e o que não é', () => {
+
+  it('as duas cópias (nuvem e download) têm o mesmo conteúdo', () => {
+    const h = novo(F.dbMinimo());
+    const dump = h.escopo.montarDump();
+    ['produtos', 'vendas', 'clientes', 'saidas', 'reposicoes', 'ledger', 'conferencias', 'config']
+      .forEach((k) => assertTrue(k in dump, 'falta ' + k + ' na exportacao'));
+    // baixarBackup() passou a montar o arquivo pela mesma funcao: sem isso o download
+    // saia sem a Conta do Victor, e a nuvem saia com ela.
+    const fonte = require('fs').readFileSync(
+      process.env.VSP_INDEX || require('path').join(__dirname, '..', 'index.html'), 'utf8');
+    assertTrue(/async function baixarBackup\(\)\{const dump=montarDump\(\);/.test(fonte),
+      'o download tem de reusar montarDump()');
+  });
+
+  it('declara o escopo dentro do próprio arquivo e não leva segredo nenhum', () => {
+    const h = novo(F.dbMinimo());
+    const dump = h.escopo.montarDump();
+    assertTrue(!!dump.escopo && Array.isArray(dump.escopo.inclui) && Array.isArray(dump.escopo.fora),
+      'o arquivo tem de declarar o escopo');
+    assertMatch(String(dump.escopo.restauracao), /nao ha/, 'tem de dizer que nao restaura');
+    // o `escopo` fala DE segredo ("senha/token (o app nao tem)"), entao sai da varredura:
+    // o que se procura e segredo nos DADOS.
+    const semEscopo = Object.assign({}, dump); delete semEscopo.escopo;
+    const texto = JSON.stringify(semEscopo).toLowerCase();
+    ['senha', 'password', 'token', 'service_role', 'apikey', 'secret', 'usuarios_autorizados']
+      .forEach((p) => assertTrue(!texto.includes(p), 'a exportacao nao pode conter "' + p + '"'));
+  });
+});

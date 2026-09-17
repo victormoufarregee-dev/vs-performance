@@ -657,7 +657,7 @@ input,select,textarea{font-size:16px;padding:11px 12px}
         <div class="ir"><span>Status</span><span id="dbStatus" style="color:var(--g)">Conectado ✓</span></div>
       </div>
       <div class="card"><p class="ct">Backup dos dados</p>
-        <p style="font-size:12px;color:var(--sub);margin-bottom:8px">O app grava uma c&oacute;pia operacional dos principais dados (produtos, vendas, clientes, sa&iacute;das, compras e Conta do Victor) <strong>na pr&oacute;pria nuvem, sozinho, toda semana</strong>. Voc&ecirc; tamb&eacute;m pode baixar uma c&oacute;pia para o computador quando quiser (essa n&atilde;o leva a Conta do Victor). N&atilde;o &eacute; c&oacute;pia completa do sistema e o app n&atilde;o restaura por ela: confer&ecirc;ncias, configura&ccedil;&otilde;es e auditoria ficam de fora. A recupera&ccedil;&atilde;o completa &eacute; o backup di&aacute;rio do banco no Supabase.</p>
+        <p style="font-size:12px;color:var(--sub);margin-bottom:8px">O app grava uma c&oacute;pia operacional <strong>na pr&oacute;pria nuvem, sozinho, toda semana</strong>, e a c&oacute;pia que voc&ecirc; baixa para o computador tem exatamente o mesmo conte&uacute;do: produtos, vendas, clientes, sa&iacute;das, compras, Conta do Victor, confer&ecirc;ncias de caixa e configura&ccedil;&otilde;es. N&atilde;o &eacute; c&oacute;pia completa do sistema e o app n&atilde;o restaura por ela: a auditoria fica de fora (o app s&oacute; tem as &uacute;ltimas 500 linhas) e a allowlist de usu&aacute;rios tamb&eacute;m. O pr&oacute;prio arquivo diz isso no campo <code>escopo</code>. A recupera&ccedil;&atilde;o completa &eacute; o backup di&aacute;rio do banco no Supabase.</p>
         <div id="cfgBackupInfo" style="margin-bottom:10px"></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
           <button class="btn" onclick="backupAgoraNuvem()"><i class="ti ti-cloud-upload"></i> Gravar c&oacute;pia na nuvem</button>
@@ -2237,10 +2237,24 @@ function exportClientes(){dlCSV('vs_clientes.csv',['Nome','WhatsApp','Compras','
 function exportEstoque(){dlCSV('vs_estoque.csv',['Produto','Caixas','Frascos','Total frascos eq.','Custo caixa','Custo frasco','Valor em estoque'],DB.produtos.map(p=>[p.nome,p.caixas,p.frascos,totFP(p),p.custoCaixa.toFixed(2),p.custoFrasco.toFixed(2),valorEstProd(p).toFixed(2)]));}
 function exportProdutos(){dlCSV('vs_produtos.csv',['Produto','Vende frasco','Frascos por caixa','Custo caixa','Custo frasco','Caixas','Frascos','Ativo'],DB.produtos.map(p=>[p.nome,p.vendeFrasco?'Sim':'Não',p.fpc,p.custoCaixa.toFixed(2),p.custoFrasco.toFixed(2),p.caixas,p.frascos,p.ativo?'Sim':'Não']));}
 // ---- BACKUP AUTOMATICO (grava uma copia na propria nuvem) ----
+// EXPORTAÇÃO OPERACIONAL — não é "backup completo", e o campo `escopo` diz isso dentro do
+// próprio arquivo. Entra o que o app carrega e sabe reconstruir para leitura.
+// O que fica FORA, e por quê:
+//   auditoria  — o app só tem as últimas 500 linhas; exportar um pedaço chamando de
+//                "auditoria" seria mentira. A íntegra fica no banco.
+//   usuários   — allowlist de uid é ato administrativo, não sai por arquivo.
+//   estoque    — a tabela `estoque` é legado; o estoque de verdade está em `produtos`
+//                (caixas/frascos), que vai junto.
+// NUNCA entram senha, token, chave de serviço nem sessão — nada disso passa pelo app.
+// Não existe restauração: reimportar mexeria em dinheiro real sem prévia nem atomicidade.
 function montarDump(){
   const{display}=getNow();
   return {app:'VS Performance',versao:APP_VERSION,exportado_em:display,por:currentUser,
-    produtos:DB.produtos,vendas:DB.vendas,clientes:DB.clientes,saidas:DB.saidas,reposicoes:DB.reposicoes,ledger:ledgerMovs()};
+    escopo:{inclui:['produtos','vendas','clientes','saidas','reposicoes','ledger','conferencias','config'],
+            fora:['auditoria (o app so tem as ultimas 500 linhas)','usuarios autorizados','senha/token (o app nao tem)'],
+            restauracao:'nao ha; este arquivo e para consulta e conferencia'},
+    produtos:DB.produtos,vendas:DB.vendas,clientes:DB.clientes,saidas:DB.saidas,reposicoes:DB.reposicoes,
+    ledger:ledgerMovs(),conferencias:Array.isArray(DB.conferencias)?DB.conferencias:[],config:DB.config||null};
 }
 async function gravarBackupNuvem(tipo){
   const{display}=getNow();
@@ -2292,7 +2306,7 @@ async function baixarBackupNuvem(id){
   }catch(e){hideLoading();showToast('Erro ao baixar: '+(e.message||e),'err');}
 }
 
-async function baixarBackup(){const dump={app:'VS Performance',exportado_em:getNow().display,por:currentUser,produtos:DB.produtos,vendas:DB.vendas,clientes:DB.clientes,saidas:DB.saidas,reposicoes:DB.reposicoes};const blob=new Blob([JSON.stringify(dump,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='vs_backup_'+today()+'.json';a.click();const{display}=getNow();try{await sbPatch('config',1,{last_backup:display});DB.config.last_backup=display;}catch(e){}await audit('EXPORTACAO','Copia dos principais dados (JSON) baixada por '+currentUser);renderAlertas();showToast('Backup baixado!');}
+async function baixarBackup(){const dump=montarDump();const blob=new Blob([JSON.stringify(dump,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='vs_backup_'+today()+'.json';a.click();const{display}=getNow();try{await sbPatch('config',1,{last_backup:display});DB.config.last_backup=display;}catch(e){}await audit('EXPORTACAO','Copia dos principais dados (JSON) baixada por '+currentUser);renderAlertas();showToast('Backup baixado!');}
 function exportFin(){const tm={prolabore:'Pró-labore',retirada:'Retirada',fornecedor:'Fornecedor',despesa:'Despesa',imposto:'Imposto',outros:'Outros'};dlCSV('vs_financeiro.csv',['Data','Tipo','Sócio/Resp.','Descrição','Pgto','Valor'],DB.saidas.map(s=>[fmtD(s.data),tm[s.tipo]||s.tipo,s.socio||'—',s.desc,s.pgto,s.val.toFixed(2)]));}
 function exportFiado(){const fi=DB.vendas.filter(v=>v.pgto==='fiado'&&!v.quitado&&!v.cancelada);dlCSV('vs_fiado.csv',['Cliente','WhatsApp','Produto','Tipo','Qtd','Valor','Data'],fi.map(v=>[v.cliente,v.wpp,prodNome(v.prod),tipoLabel(v.tipo),v.qtd,v.bruto.toFixed(2),fmtD(v.data)]));}
 function exportCancel(){const cans=DB.vendas.filter(v=>v.cancelada);dlCSV('vs_cancelamentos.csv',['Data cancelamento','Cancelado por','Data venda','Produto','Tipo','Qtd','Cliente','WhatsApp','Valor','Motivo'],cans.map(v=>[v.canceladaEm||'',v.canceladaPor||'',fmtD(v.data),prodNome(v.prod),tipoLabel(v.tipo),v.qtd,v.cliente,v.wpp,v.bruto.toFixed(2),v.canceladaMotivo||'']));}
