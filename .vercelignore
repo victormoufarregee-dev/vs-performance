@@ -1,0 +1,8 @@
+# Só o app vai para a internet. Documentação, migrations e testes ficam no repositório
+# (privado) e NÃO podem ser servidos: descrevem finanças, clientes e o banco.
+/*
+!/index.html
+!/sw.js
+!/manifest.json
+!/icon.svg
+!/vercel.json
