@@ -163,6 +163,9 @@ LF, como `estatico.js` já fazia.
 de exibição. **Não foi reescrito** — é história real. Da 011 em diante o banco calcula a margem
 sobre a venda, sempre.
 
+> **Atualização 23/09/2026:** a pedido do Victor, as 12 foram corrigidas para lucro ÷ bruto × 100
+> (valores antigos no `audit_log`, ação `CORRECAO_MARGEM`). Ver `REGISTRO-2026-09-23.md`.
+
 ---
 
 ## 3. Banco — migrations aplicadas
@@ -410,6 +413,9 @@ propósito, e o `trg_cc_protege` garante que nem o dono do banco reescreve a fot
 Se um dia aparecer a origem dos R$ 3,00 — uma venda pequena de julho que não foi lançada, por
 exemplo — o certo é **lançar a venda que faltou**, não um ajuste. Aí o caixa esperado se
 corrige sozinho, pelo fato, e a conferência 82 continua sendo o retrato honesto de hoje.
+
+> **Conferência 83 (23/09/2026):** depois da devolução de R$ 1.700 do Hassan, esperado 1.696,51,
+> real 1.700,00, diferença **+3,49** — o mesmo resíduo. Ver `REGISTRO-2026-09-23.md`.
 
 ### 10D. A venda de R$ 1,00 de 29/07 — investigada, nada alterado
 
