@@ -1,0 +1,118 @@
+# Backup semanal do banco, FORA do Supabase, com teste de restauração.
+#
+# Toda segunda 06:00 (São Paulo) e sob demanda (Actions → backup → Run workflow):
+#   1. pg_dump do schema public (tabelas, dados, funções, policies, grants) pelo pooler;
+#   2. criptografa com AES-256 (gpg, senha em BACKUP_PASSPHRASE) e guarda como artifact
+#      por 90 dias — o arquivo sem a senha é inútil;
+#   3. RESTAURA a cópia num Postgres limpo dentro do próprio job e confere que os
+#      números batem com o banco de produção no mesmo instante: contagem de cada
+#      tabela, caixa esperado, dívida com o Victor e valor do estoque.
+# Backup que nunca foi restaurado não é backup; este é restaurado toda semana.
+#
+# Segredos (Settings → Secrets and variables → Actions), cadastrados pelo Victor:
+#   SUPABASE_DB_URL     string do "Session pooler" (Supabase → Connect), com a senha do banco
+#   BACKUP_PASSPHRASE   senha longa da criptografia — guardar TAMBÉM fora do GitHub
+#
+# Nada aqui escreve no banco de produção: só leitura (pg_dump e SELECT).
+name: backup
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'     # segunda 09:00 UTC = 06:00 em São Paulo
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      restauro:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: restauro
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      PGCONNECT_TIMEOUT: '20'
+      RESTAURO: postgresql://postgres:restauro@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: segredos presentes
+        env:
+          DB: ${{ secrets.SUPABASE_DB_URL }}
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          test -n "$DB"   || { echo "::error::falta o segredo SUPABASE_DB_URL"; exit 1; }
+          test -n "$PASS" || { echo "::error::falta o segredo BACKUP_PASSPHRASE"; exit 1; }
+          test ${#PASS} -ge 20 || { echo "::error::BACKUP_PASSPHRASE curta demais (minimo 20)"; exit 1; }
+
+      - name: cliente postgres 17
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get -qq update && sudo apt-get -qq install -y postgresql-client-17 >/dev/null
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+
+      - name: dump do schema public
+        env:
+          DB: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          pg_dump --version
+          pg_dump "$DB" --schema=public --format=custom --no-owner --file=vsp.dump
+          ls -l vsp.dump
+          psql "$DB" -v ON_ERROR_STOP=1 -At -f ops/backup_numeros.sql > numeros_producao.txt
+
+      - name: criptografa
+        env:
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          DIA=$(TZ=America/Sao_Paulo date +%Y-%m-%d)
+          echo "DIA=$DIA" >> "$GITHUB_ENV"
+          gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --symmetric --cipher-algo AES256 \
+              --output "vsp-backup-$DIA.dump.gpg" vsp.dump <<< "$PASS"
+          sha256sum "vsp-backup-$DIA.dump.gpg" | tee "vsp-backup-$DIA.sha256"
+
+      - name: restaura a copia criptografada num postgres limpo
+        env:
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --decrypt \
+              --output restaurado.dump "vsp-backup-$DIA.dump.gpg" <<< "$PASS"
+          cmp vsp.dump restaurado.dump
+          psql "$RESTAURO" -v ON_ERROR_STOP=1 -q -f ops/restauro_preparo.sql
+          # o schema public ja existe num banco limpo, e a publicacao do Realtime e do Supabase:
+          # fora da lista. Grants (-x) tambem: citam papeis internos do Supabase. O resto entra inteiro.
+          pg_restore --list restaurado.dump | grep -v -E " SCHEMA - public | PUBLICATION TABLE " > lista.txt
+          pg_restore --dbname="$RESTAURO" --no-owner --no-privileges --exit-on-error --use-list=lista.txt restaurado.dump
+          psql "$RESTAURO" -v ON_ERROR_STOP=1 -At -f ops/backup_numeros.sql > numeros_restaurado.txt
+
+      - name: os numeros batem
+        run: |
+          echo "### Backup $DIA" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          paste -d'|' numeros_producao.txt numeros_restaurado.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          diff numeros_producao.txt numeros_restaurado.txt && echo "restauracao confere com producao"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsp-backup-${{ env.DIA }}
+          path: |
+            vsp-backup-${{ env.DIA }}.dump.gpg
+            vsp-backup-${{ env.DIA }}.sha256
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: apaga os arquivos em claro
+        if: always()
+        run: rm -f vsp.dump restaurado.dump
