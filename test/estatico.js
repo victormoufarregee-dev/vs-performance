@@ -292,7 +292,9 @@ console.log(entOk
 // 17) publicacao na Vercel: cabecalhos de seguranca e SO o app sai para a internet.
 //     O repositorio tem fechamentos com financas, clientes e e-mails; nada disso pode ser servido.
 const pubProblemas = [];
-const vjArq = path.join(path.dirname(ALVO), 'vercel.json'), viArq = path.join(path.dirname(ALVO), '.vercelignore');
+// VSP_PUBLICACAO aponta para outra pasta (prova de mutante); o padrao e a raiz do repositorio
+const PUB = process.env.VSP_PUBLICACAO || path.join(__dirname, '..');
+const vjArq = path.join(PUB, 'vercel.json'), viArq = path.join(PUB, '.vercelignore');
 let vj = null;
 try { vj = JSON.parse(fs.readFileSync(vjArq, 'utf8')); } catch (e) { pubProblemas.push('vercel.json ausente ou invalido'); }
 if (vj) {
