@@ -289,4 +289,34 @@ console.log(entOk
   ? 'ENTRADAS: ok, devolucao de fornecedor soma no caixa (banco e app), so ate hoje, so por RPC, fora do razao'
   : 'ENTRADAS QUEBRADAS: ' + entProblemas.join('; '));
 
-process.exit(!entOk || !derivOk || !grantOk || !permOk || erros || !razaoOk || !contratoOk || !confOk || !filaOk || !identidadeOk || ausentes.length || achados.length || semId.length || voltou.length || faltam.length || legadoVoltou.length || semLedger.length ? 1 : 0);
+// 17) publicacao na Vercel: cabecalhos de seguranca e SO o app sai para a internet.
+//     O repositorio tem fechamentos com financas, clientes e e-mails; nada disso pode ser servido.
+const pubProblemas = [];
+const vjArq = path.join(path.dirname(ALVO), 'vercel.json'), viArq = path.join(path.dirname(ALVO), '.vercelignore');
+let vj = null;
+try { vj = JSON.parse(fs.readFileSync(vjArq, 'utf8')); } catch (e) { pubProblemas.push('vercel.json ausente ou invalido'); }
+if (vj) {
+  const todos = (vj.headers || []).find((hh) => hh.source === '/(.*)');
+  const hv = (k) => ((todos && todos.headers) || []).find((y) => y.key.toLowerCase() === k.toLowerCase());
+  const csp = (hv('Content-Security-Policy') || {}).value || '';
+  [["frame-ancestors 'none'", 'CSP sem frame-ancestors none'], ["object-src 'none'", 'CSP sem object-src none'],
+   ["base-uri 'self'", 'CSP sem base-uri'], ['connect-src', 'CSP sem connect-src'],
+  ].filter(([t]) => !csp.includes(t)).forEach(([, m]) => pubProblemas.push(m));
+  if (!/connect-src[^;]*sfgpwunpcrigdhlgrgdq\.supabase\.co/.test(csp)) pubProblemas.push('CSP nao libera o Supabase');
+  if (/connect-src[^;]*\*/.test(csp)) pubProblemas.push('connect-src aberto com *');
+  ['Strict-Transport-Security', 'X-Frame-Options', 'X-Content-Type-Options', 'Referrer-Policy', 'Permissions-Policy']
+    .filter((k) => !hv(k)).forEach((k) => pubProblemas.push('falta ' + k));
+  // todo host de script/estilo/fonte que o app usa precisa estar liberado
+  const hosts = [...new Set([...h.matchAll(/(?:src|href)="(https:\/\/[^/"$]+)\//g)].map((m) => m[1]))].filter((u) => !/wa\.me/.test(u));
+  hosts.filter((u) => !csp.includes(u)).forEach((u) => pubProblemas.push('CSP bloquearia ' + u));
+}
+const vi = fs.existsSync(viArq) ? fs.readFileSync(viArq, 'utf8').split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#')) : [];
+if (vi[0] !== '/*') pubProblemas.push('.vercelignore nao comeca negando tudo');
+const liberados = vi.filter((l) => l.startsWith('!')).map((l) => l.slice(2)).sort().join(',');
+if (liberados !== 'icon.svg,index.html,manifest.json,sw.js,vercel.json') pubProblemas.push('.vercelignore publica mais do que o app: ' + liberados);
+const pubOk = !pubProblemas.length;
+console.log(pubOk
+  ? 'PUBLICACAO: ok, CSP e cabecalhos de seguranca na Vercel; so index/sw/manifest/icone sao servidos'
+  : 'PUBLICACAO QUEBRADA: ' + pubProblemas.join('; '));
+
+process.exit(!pubOk || !entOk || !derivOk || !grantOk || !permOk || erros || !razaoOk || !contratoOk || !confOk || !filaOk || !identidadeOk || ausentes.length || achados.length || semId.length || voltou.length || faltam.length || legadoVoltou.length || semLedger.length ? 1 : 0);
