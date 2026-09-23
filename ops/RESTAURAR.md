@@ -19,7 +19,9 @@ Cada execução:
    dívida com o Victor e valor do estoque contra a produção no mesmo instante. Se um número
    não bater, o workflow fica vermelho e o GitHub manda e-mail.
 
-O resumo de cada execução mostra os números lado a lado (produção | restaurado).
+O resumo de cada execução mostra cada conferência com "confere" ou "NAO CONFERE", **sem os
+valores**: enquanto o repositório for público, logs e resumos das Actions também são. Pelo
+mesmo motivo o artifact é criptografado — sem a senha ele não serve para nada.
 
 **Fora do backup semanal:** as contas de login (`auth.users`). Elas continuam no backup diário
 do Supabase. Numa perda total, Victor e Stefany criam a conta de novo e o `uid` novo entra em
