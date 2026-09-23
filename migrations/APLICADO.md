@@ -603,3 +603,14 @@ Auditado nesta rodada, para fechar a dívida "migration history":
   esperado −3,49 (inalterado). Foto de produção comparada com a anterior: só mudaram
   `vsp_caixa_esperado_calc` (md5 e859879b… = arquivo), `vsp_registrar_entrada` e
   `vsp_excluir_entrada` (novas) e o grant `entradas: SELECT`. Nada mais.
+
+## Correções de dado de 23/09/2026 (sem migration)
+
+- **Razão #160** (`ajuste_financeiro`, débito 1.700, op_id `corr-tg-20260923-ajuste`), SQL
+  Editor com autorização do Victor: mantém a dívida em 5.758,30 depois de estornar a compra de
+  8 cx (#158) e relançar 5 cx (#159), porque a devolução do Hassan foi para a empresa.
+- **`vendas.margem`** das 12 vendas de junho em markup (10 ativas + 2 canceladas) recalculada
+  como `round(lucro_liq / bruto * 100, 4)`, com trava de contagem exata; valores antigos em
+  `audit_log` (`CORRECAO_MARGEM`). Nenhuma outra coluna mudou.
+
+Detalhes e números em `REGISTRO-2026-09-23.md`.
