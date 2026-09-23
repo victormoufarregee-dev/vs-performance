@@ -97,13 +97,19 @@ jobs:
           psql "$RESTAURO" -v ON_ERROR_STOP=1 -At -f ops/backup_numeros.sql > numeros_restaurado.txt
 
       - name: os numeros batem
+        # O repositorio e PUBLICO: os logs e o resumo das Actions tambem sao. Nenhum valor
+        # (caixa, divida, contagens) pode aparecer aqui. So o nome de cada conferencia e se
+        # bateu. Os numeros ficam nos arquivos locais do job, apagados no fim.
         run: |
           echo "### Backup $DIA" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          paste -d'|' numeros_producao.txt numeros_restaurado.txt >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          diff numeros_producao.txt numeros_restaurado.txt && echo "restauracao confere com producao"
-
+          test "$(wc -l < numeros_producao.txt)" -eq "$(wc -l < numeros_restaurado.txt)" || { echo "::error::quantidade de conferencias diferente"; exit 1; }
+          falhas=0
+          while IFS= read -r a && IFS= read -r b <&3; do
+            nome=$(printf "%s" "$a" | sed -E "s/ [^ ]+$//")
+            if [ "$a" = "$b" ]; then echo "- $nome: confere" >> "$GITHUB_STEP_SUMMARY";
+            else echo "- $nome: **NAO CONFERE**" >> "$GITHUB_STEP_SUMMARY"; echo "::error::$nome nao confere"; falhas=1; fi
+          done < numeros_producao.txt 3< numeros_restaurado.txt
+          test $falhas -eq 0 && echo "restauracao confere com producao ($(wc -l < numeros_producao.txt) conferencias)"
       - uses: actions/upload-artifact@v4
         with:
           name: vsp-backup-${{ env.DIA }}
@@ -115,4 +121,4 @@ jobs:
 
       - name: apaga os arquivos em claro
         if: always()
-        run: rm -f vsp.dump restaurado.dump
+        run: rm -f vsp.dump restaurado.dump numeros_producao.txt numeros_restaurado.txt lista.txt
