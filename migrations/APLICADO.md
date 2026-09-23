@@ -591,3 +591,15 @@ Auditado nesta rodada, para fechar a dívida "migration history":
 - Regra que continua valendo: ao mudar uma função no banco, mude o **arquivo** e **atualize a
   foto**. Ensaie sempre numa transação que termina em exceção.
 - `migrations/historico/` guarda rascunho antigo que **não deve ser aplicado**.
+
+## 012 — Entrada que não é venda: devolução de fornecedor (23/09/2026)
+
+- **Motivo:** troca de TG com o Hassan (8 cx a R$ 582,50 → 5 cx a R$ 592). Ele devolveu
+  R$ 1.700 à empresa; o caixa (vendas − saídas) não tinha onde receber esse dinheiro.
+- **Ensaio no banco real** (012 + `test/sql/entradas.test.sql`, transação desfeita pela
+  exceção final): `RESULTADO_ENTRADAS: 27 ok, 0 falha(s) | caixa_esperado_antes=-3.49 | ator=Victor`.
+- **Aplicada** pelo Victor no SQL Editor em 23/09/2026, texto LF idêntico ao commit a5743b5.
+- **Conferência pós-aplicação:** tabela `entradas` com RLS e 1 policy, 0 linhas, caixa
+  esperado −3,49 (inalterado). Foto de produção comparada com a anterior: só mudaram
+  `vsp_caixa_esperado_calc` (md5 e859879b… = arquivo), `vsp_registrar_entrada` e
+  `vsp_excluir_entrada` (novas) e o grant `entradas: SELECT`. Nada mais.

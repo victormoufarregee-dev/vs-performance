@@ -184,8 +184,8 @@ console.log(razaoOk
 //     executa. As portas legitimas do app continuam com EXECUTE para authenticated (a
 //     seguranca delas e allowlist + autor pela sessao, provada em test/sql/).
 const PORTAS_DO_APP = ['vsp_ator', 'vsp_autorizado', 'vsp_caixa_esperado', 'vsp_cancelar_venda', 'vsp_estornar_compra',
-  'vsp_invalidar_conferencia_caixa', 'vsp_quitar_fiado', 'vsp_reembolsar_victor', 'vsp_registrar_compra',
-  'vsp_registrar_conferencia_caixa', 'vsp_registrar_venda', 'vsp_saldo_victor'];
+  'vsp_excluir_entrada', 'vsp_invalidar_conferencia_caixa', 'vsp_quitar_fiado', 'vsp_reembolsar_victor', 'vsp_registrar_compra',
+  'vsp_registrar_conferencia_caixa', 'vsp_registrar_entrada', 'vsp_registrar_venda', 'vsp_saldo_victor'];
 const permProblemas = [];
 const sql009Arq = path.join(MIGRACOES, '009_backfill_fechado.sql');
 const sql009 = fs.existsSync(sql009Arq) ? fs.readFileSync(sql009Arq, 'utf8').replace(/\r\n/g, '\n').replace(/^\s*--.*$/gm, '') : '';
@@ -209,7 +209,7 @@ console.log(permOk
 //     permite e o que o app chama pelo PostgREST — e a foto de producao tem de bater com ele.
 const GRANTS_ALVO = {
   audit_log: 'INSERT,SELECT', backups: 'DELETE,INSERT,SELECT', clientes: 'INSERT,SELECT,UPDATE',
-  conferencias_caixa: 'SELECT', config: 'SELECT,UPDATE', estoque: 'SELECT', ledger_victor: 'SELECT',
+  conferencias_caixa: 'SELECT', config: 'SELECT,UPDATE', entradas: 'SELECT', estoque: 'SELECT', ledger_victor: 'SELECT',
   produtos: 'INSERT,SELECT,UPDATE', reposicoes: 'SELECT', saidas: 'DELETE,INSERT,SELECT',
   usuarios_autorizados: 'SELECT', vendas: 'SELECT', v_ledger_victor: 'SELECT',
 };
@@ -268,4 +268,25 @@ console.log(derivOk
   ? 'DINHEIRO DERIVADO: ok, venda e quitacao calculadas no banco, payload incoerente recusado, numBR estrito'
   : 'DINHEIRO DERIVADO QUEBRADO: ' + derivProblemas.join('; '));
 
-process.exit(!derivOk || !grantOk || !permOk || erros || !razaoOk || !contratoOk || !confOk || !filaOk || !identidadeOk || ausentes.length || achados.length || semId.length || voltou.length || faltam.length || legadoVoltou.length || semLedger.length ? 1 : 0);
+// 16) entrada que nao e venda (012). Soma no caixa (banco e app), so por RPC, e nunca
+//     vira receita, lucro ou movimento do razao do Victor.
+const entProblemas = [];
+const sql012Arq = path.join(MIGRACOES, '012_entradas_devolucao_fornecedor.sql');
+const sql012 = fs.existsSync(sql012Arq) ? fs.readFileSync(sql012Arq, 'utf8').replace(/\r\n/g, '\n').replace(/^\s*--.*$/gm, '') : '';
+if (!sql012) entProblemas.push('migration 012 ausente');
+[['+ coalesce((select sum(e.val::numeric) from public.entradas e', 'o caixa esperado do banco nao soma as entradas'],
+ ["where e.data <= (now() at time zone 'America/Sao_Paulo')::date", 'o banco soma entrada com data futura'],
+ ['revoke all on public.entradas from public, anon, authenticated;', 'entradas nasce com os grants padrao'],
+ ['grant select on public.entradas to authenticated;', 'o app nao le as entradas'],
+ ['alter table public.entradas enable row level security;', 'entradas sem RLS'],
+].filter(([t]) => !sql012.includes(t)).forEach(([, m]) => entProblemas.push(m));
+if (/ledger_victor/.test(sql012.replace(/--.*$/gm, ''))) entProblemas.push('a 012 mexe no razao do Victor');
+if (!/recebido\+entradas-saidas/.test(h)) entProblemas.push('o caixa esperado do app nao soma as entradas');
+if (!/sbRpc\('vsp_registrar_entrada'/.test(h) || !/sbRpc\('vsp_excluir_entrada'/.test(h)) entProblemas.push('a tela nao usa as RPCs de entrada');
+if (/sb(Post|Patch|Delete)\('entradas'/.test(h)) entProblemas.push('a tela grava entradas direto na tabela');
+const entOk = !entProblemas.length;
+console.log(entOk
+  ? 'ENTRADAS: ok, devolucao de fornecedor soma no caixa (banco e app), so ate hoje, so por RPC, fora do razao'
+  : 'ENTRADAS QUEBRADAS: ' + entProblemas.join('; '));
+
+process.exit(!entOk || !derivOk || !grantOk || !permOk || erros || !razaoOk || !contratoOk || !confOk || !filaOk || !identidadeOk || ausentes.length || achados.length || semId.length || voltou.length || faltam.length || legadoVoltou.length || semLedger.length ? 1 : 0);
